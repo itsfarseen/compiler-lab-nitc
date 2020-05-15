@@ -1,0 +1,49 @@
+cabal-version: 1.12
+
+-- This file has been generated from package.yaml by hpack version 0.31.2.
+--
+-- see: https://github.com/sol/hpack
+--
+-- hash: 24db79af8ae50ac040c187a56edb5c46f4f0dd89c4285e809ff6ef08fa98fd51
+
+name:           CompilerLab
+version:        0.1.0.0
+author:         Farzeen
+maintainer:     happycoder97@protonmail.com
+copyright:      2020 Farzeen
+license:        BSD3
+license-file:   LICENSE
+build-type:     Simple
+extra-source-files:
+    README.md
+
+executable CompilerLab
+  main-is: Main.hs
+  other-modules:
+        Grammar
+      , Span
+      , Parser
+      , Lexer
+      , Error
+      , Frontend
+      , Symbol
+      , Token
+      , LoopStack
+      , SymbolTable
+  hs-source-dirs:
+      src
+--   ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -Wno-unused-imports
+  build-depends:
+      base
+    , flow
+    , unordered-containers
+    , mtl
+    , utf8-string
+    , extra
+    , errors
+    , array
+  default-language: Haskell2010
+  build-tool-depends:
+        alex:alex
+      , happy:happy
