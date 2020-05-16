@@ -2,11 +2,12 @@ module Symbol where
 
 import Span (Span)
 
-data Symbol =
+data Symbol a =
   Symbol
     { name :: String
     , dataType :: DataType
     , declSpan :: Span
+    , ext :: a
     }
 
 data DataType

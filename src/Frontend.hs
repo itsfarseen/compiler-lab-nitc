@@ -17,7 +17,7 @@ data AlexInput = AlexInput {alexInputStr :: [Word8], alexTokenOffset :: Int }
 data FrontendData =
   FrontendData
     { alexInput :: AlexInput
-    , symbolTable :: SymbolTable
+    , symbolTable :: SymbolTable ()
     , loopStack :: LoopStack
     }
 

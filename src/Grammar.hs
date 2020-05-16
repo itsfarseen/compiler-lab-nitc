@@ -1,19 +1,20 @@
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PatternSynonyms #-}
 
 module Grammar (
   Program(..),
   Stmt(..),
-  StmtDeclare, mkStmtDeclare,
-  StmtAssign, mkStmtAssign,
-  StmtRead, mkStmtRead,
-  StmtWrite, mkStmtWrite,
-  StmtIf, mkStmtIf,
-  StmtIfElse, mkStmtIfElse,
-  StmtWhile, mkStmtWhile,
-  StmtDoWhile, mkStmtDoWhile,
-  StmtBreak, mkStmtBreak,
-  StmtContinue, mkStmtContinue,
+  StmtDeclare(..), mkStmtDeclare,
+  StmtAssign(..), mkStmtAssign,
+  StmtRead(..), mkStmtRead,
+  StmtWrite(..), mkStmtWrite,
+  StmtIf(..), mkStmtIf,
+  StmtIfElse(..), mkStmtIfElse,
+  StmtWhile(..), mkStmtWhile,
+  StmtDoWhile(..), mkStmtDoWhile,
+  StmtBreak(..), mkStmtBreak,
+  StmtContinue(..), mkStmtContinue,
   Exp(..),
   OpArithmetic(..),
   OpLogical(..),
@@ -31,14 +32,16 @@ import qualified Error
 import LoopStack (LoopStack)
 import qualified LoopStack
 import           Span
-import           Symbol (DataType (..), Symbol (..))
 import qualified Symbol
-import           SymbolTable (SymbolTable)
+import           Symbol (DataType (..), pattern Symbol)
 import qualified SymbolTable
 import Control.Monad.Except ( MonadError, liftEither, throwError )
 import Control.Monad (unless)
 import Data.Bifunctor (first)
 import Data.Either.Extra (maybeToEither)
+
+type Symbol = Symbol.Symbol ()
+type SymbolTable = SymbolTable.SymbolTable ()
 
 newtype Program = Program { stmts :: [Stmt] }
 
@@ -68,7 +71,11 @@ mkStmtDeclare ident dataType span = do
   putSymtab symtab'
   return $ MkStmtDeclare ident dataType span
  where
-  symbol = Symbol { name = ident, declSpan = span, dataType = dataType }
+  symbol = Symbol { Symbol.name     = ident
+                  , Symbol.declSpan = span
+                  , Symbol.dataType = dataType
+                  , Symbol.ext      = ()
+                  }
   throwSymbolExists = liftEither . first
     (\(SymbolTable.SymbolExists symbol1) ->
       Error.identifierRedeclared ident (Symbol.declSpan symbol1) span
