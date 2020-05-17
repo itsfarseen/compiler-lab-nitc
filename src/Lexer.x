@@ -50,6 +50,9 @@ $brace_close = \}
 @endwhile    = "endwhile"
 @do          = "do"
 @break       = "break"
+@continue    = "continue"
+@int         = "int"
+@bool        = "bool"
 
 @number      = [0-9]+
 @ident       = [a-z]
@@ -90,6 +93,9 @@ tokens :-
     @endwhile    {token TokenEndWhile}
     @do          {token TokenDo}
     @break       {token TokenBreak}
+    @continue    {token TokenContinue}
+    @int         {token TokenInt}
+    @bool        {token TokenBool}
 
     @number      {tokenInt TokenNumber}
     @ident       {tokenStr TokenIdent}
