@@ -9,11 +9,12 @@ data Symbol a =
     , declSpan :: Span
     , ext :: a
     }
+    deriving Show
 
 data DataType
   = DataTypeInt
   | DataTypeBool
-  deriving (Eq)
+  deriving Eq
 
 instance Show DataType where
   show DataTypeInt  = "Int"

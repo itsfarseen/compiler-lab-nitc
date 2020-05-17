@@ -43,49 +43,53 @@ data UntranslatedJump
   deriving (Show)
 
 utjGetLabel :: UntranslatedJump -> String
-utjGetLabel jmp =
-  case jmp of
-    XSM_UTJ_JZ _ label -> label
-    XSM_UTJ_JNZ _ label -> label
-    XSM_UTJ_JMP label -> label
+utjGetLabel jmp = case jmp of
+  XSM_UTJ_JZ  _ label -> label
+  XSM_UTJ_JNZ _ label -> label
+  XSM_UTJ_JMP label   -> label
 
 utjTranslate :: UntranslatedJump -> Int -> XSMInstr
-utjTranslate jmp loc =
-  case jmp of
-    XSM_UTJ_JZ r _ -> XSM_JZ r loc
-    XSM_UTJ_JNZ r _ -> XSM_JNZ r loc
-    XSM_UTJ_JMP _ -> XSM_JMP loc
+utjTranslate jmp loc = case jmp of
+  XSM_UTJ_JZ  r _ -> XSM_JZ r loc
+  XSM_UTJ_JNZ r _ -> XSM_JNZ r loc
+  XSM_UTJ_JMP _   -> XSM_JMP loc
 
 toCode :: XSMInstr -> String
-toCode instr =
-  case instr of
-    XSM_MOV_R rd rs -> "MOV " ++ show rd ++ ", " ++ show rs
-    XSM_MOV_Int r i -> "MOV " ++ show r ++ ", " ++ show i
-    XSM_MOV_Str r s -> "MOV " ++ show r ++ ", " ++ s
-    XSM_MOV_IndSrc r s -> "MOV " ++ show r ++ ", [" ++ show s ++ "]"
-    XSM_MOV_IndDst r s -> "MOV [" ++ show r ++ "], " ++ show s
-    XSM_MOV_DirSrc r s -> "MOV " ++ show r ++ ", [" ++ show s ++ "]"
-    XSM_MOV_DirDst r s -> "MOV [" ++ show r ++ "], " ++ show s
-    XSM_PUSH r -> "PUSH " ++ show r
-    XSM_POP r -> "POP " ++ show r
-    XSM_ADD r ri -> "ADD " ++ show r ++ ", " ++ show ri
-    XSM_ADD_I r ri -> "ADD " ++ show r ++ ", " ++ show ri
-    XSM_SUB r ri -> "SUB " ++ show r ++ ", " ++ show ri
-    XSM_SUB_I r ri -> "SUB " ++ show r ++ ", " ++ show ri
-    XSM_MUL r ri -> "MUL " ++ show r ++ ", " ++ show ri
-    XSM_MUL_I r ri -> "MUL " ++ show r ++ ", " ++ show ri
-    XSM_DIV r ri -> "DIV " ++ show r ++ ", " ++ show ri
-    XSM_DIV_I r ri -> "DIV " ++ show r ++ ", " ++ show ri
-    XSM_MOD r ri -> "MOD " ++ show r ++ ", " ++ show ri
-    XSM_MOD_I r ri -> "MOD " ++ show r ++ ", " ++ show ri
-    XSM_LT r1 r2 -> "LT " ++ show r1 ++ ", " ++ show r2
-    XSM_EQ r1 r2 -> "EQ " ++ show r1 ++ ", " ++ show r2
-    XSM_NE r1 r2 -> "NE " ++ show r1 ++ ", " ++ show r2
-    XSM_GT r1 r2 -> "GT " ++ show r1 ++ ", " ++ show r2
-    XSM_LE r1 r2 -> "LE " ++ show r1 ++ ", " ++ show r2
-    XSM_GE r1 r2 -> "GE " ++ show r1 ++ ", " ++ show r2
-    XSM_JZ r1 i -> "JZ " ++ show r1 ++ ", " ++ show i
-    XSM_JNZ r1 i -> "JNZ " ++ show r1 ++ ", " ++ show i
-    XSM_JMP i -> "JMP " ++ show i
-    XSM_INT i -> "INT " ++ show i
-    XSM_UTJ utj -> error "Untranslated jump encountered: " ++ show utj
+toCode instr = case instr of
+  XSM_MOV_R      rd rs -> "MOV " ++ show rd ++ ", " ++ show rs
+  XSM_MOV_Int    r  i  -> "MOV " ++ show r ++ ", " ++ show i
+  XSM_MOV_Str    r  s  -> "MOV " ++ show r ++ ", " ++ s
+  XSM_MOV_IndSrc r  s  -> "MOV " ++ show r ++ ", [" ++ show s ++ "]"
+  XSM_MOV_IndDst r  s  -> "MOV [" ++ show r ++ "], " ++ show s
+  XSM_MOV_DirSrc r  s  -> "MOV " ++ show r ++ ", [" ++ show s ++ "]"
+  XSM_MOV_DirDst r  s  -> "MOV [" ++ show r ++ "], " ++ show s
+  XSM_PUSH r           -> "PUSH " ++ show r
+  XSM_POP  r           -> "POP " ++ show r
+  XSM_ADD   r  ri      -> "ADD " ++ show r ++ ", " ++ show ri
+  XSM_ADD_I r  ri      -> "ADD " ++ show r ++ ", " ++ show ri
+  XSM_SUB   r  ri      -> "SUB " ++ show r ++ ", " ++ show ri
+  XSM_SUB_I r  ri      -> "SUB " ++ show r ++ ", " ++ show ri
+  XSM_MUL   r  ri      -> "MUL " ++ show r ++ ", " ++ show ri
+  XSM_MUL_I r  ri      -> "MUL " ++ show r ++ ", " ++ show ri
+  XSM_DIV   r  ri      -> "DIV " ++ show r ++ ", " ++ show ri
+  XSM_DIV_I r  ri      -> "DIV " ++ show r ++ ", " ++ show ri
+  XSM_MOD   r  ri      -> "MOD " ++ show r ++ ", " ++ show ri
+  XSM_MOD_I r  ri      -> "MOD " ++ show r ++ ", " ++ show ri
+  XSM_LT    r1 r2      -> "LT " ++ show r1 ++ ", " ++ show r2
+  XSM_EQ    r1 r2      -> "EQ " ++ show r1 ++ ", " ++ show r2
+  XSM_NE    r1 r2      -> "NE " ++ show r1 ++ ", " ++ show r2
+  XSM_GT    r1 r2      -> "GT " ++ show r1 ++ ", " ++ show r2
+  XSM_LE    r1 r2      -> "LE " ++ show r1 ++ ", " ++ show r2
+  XSM_GE    r1 r2      -> "GE " ++ show r1 ++ ", " ++ show r2
+  XSM_JZ    r1 i       -> "JZ " ++ show r1 ++ ", " ++ show i
+  XSM_JNZ   r1 i       -> "JNZ " ++ show r1 ++ ", " ++ show i
+  XSM_JMP i            -> "JMP " ++ show i
+  XSM_INT i            -> "INT " ++ show i
+  XSM_UTJ utj          -> error "Untranslated jump encountered: " ++ show utj
+
+toCodeUntranslated :: XSMInstr -> String
+toCodeUntranslated instr = case instr of
+  XSM_UTJ (XSM_UTJ_JMP label  ) -> "JMP " ++ label
+  XSM_UTJ (XSM_UTJ_JNZ r label) -> "JNZ " ++ show r ++ ", " ++ label
+  XSM_UTJ (XSM_UTJ_JZ  r label) -> "JZ " ++ show r ++ ", " ++ label
+  _                             -> toCode instr

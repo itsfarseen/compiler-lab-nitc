@@ -31,25 +31,35 @@ frontend = do
   symtab  <- gets Frontend.symbolTable
   return (program, symtab)
 
-backend :: Grammar.Program -> Compiler String
-backend program = do
+backend :: Grammar.Program -> Bool -> Bool -> Compiler String
+backend program isUntranslated isNumbered = do
   Codegen.parseProgram program
-  Compiler.getTranslatedCode
+  if isUntranslated
+    then Compiler.getUntranslatedCode
+    else if isNumbered
+      then Compiler.getTranslatedCodeNumbered
+      else Compiler.getTranslatedCode
 
 main :: IO ()
 main = do
-  args                    <- getArgs
+  args_ <- getArgs
+  let (isUntranslated, isNumbered, args) = case args_ of
+        ("-u" : args') -> (True, False, args')
+        ("-n" : args') -> (False, True, args')
+        _              -> (False, False, args_)
+
   (inputFile, outputFile) <- case args of
     [inputFile] -> return (inputFile, replaceExtension inputFile ".xsm")
     [inputFile, outputFile] -> return (inputFile, outputFile)
     _ -> do
-      putStrLn "Syntax: expl input [output]"
+      putStrLn "Syntax: expl [-u] input [output]"
       exitFailure
   input <- readFile inputFile
   handleError input inputFile $ do
     (program, symtab) <- liftEither
       $ Frontend.runFrontend (Frontend.initData input) frontend
-    output <- liftEither $ Compiler.runCompiler (backend program) symtab
+    output <- liftEither
+      $ Compiler.runCompiler (backend program isUntranslated isNumbered) symtab
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()

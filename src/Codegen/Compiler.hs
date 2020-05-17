@@ -44,19 +44,18 @@ initCompilerState symTab = CompilerState { freeRegs           = [R0 .. R19]
                                          , loopBreakLabels    = []
                                          , loopContinueLabels = []
                                          , symbolTable        = symTabExt
-                                         , symbolTableLastLoc = lastLoc
+                                         , symbolTableLastLoc = nextLoc - 1
                                          }
  where
-  (lastLoc, symTabExt) = SymbolTable.map genExt 0 symTab
-  genExt lastLoc _ = (lastLoc + 1, lastLoc + 1)
+  (nextLoc, symTabExt) = SymbolTable.map genExt 0 symTab
+  genExt lastLoc _ = (lastLoc + 1, lastLoc)
 
 runCompiler :: Compiler a -> SymbolTable () -> Either Error a
 runCompiler compiler symtab = evalStateT compiler (initCompilerState symtab)
 
-
 getIdentLocInStack :: String -> Compiler Int
-getIdentLocInStack ident =
-  gets (symbolLoc . fromJust . SymbolTable.lookup ident . symbolTable)
+getIdentLocInStack ident = (4096 +)
+  <$> gets (symbolLoc . fromJust . SymbolTable.lookup ident . symbolTable)
 
 getFreeReg :: Compiler Reg
 getFreeReg = do
@@ -124,10 +123,10 @@ popLoopContinueLabel = do
 getTranslatedCode :: Compiler String
 getTranslatedCode = do
   let header = ["0", "2056", "0", "0", "0", "0", "0", "0"]
-  let loadLoc   = 2048
-  let codeStart = length header + loadLoc
-  symbolTableLastLoc <- (+ 4096) <$> gets symbolTableLastLoc
+  let loadLoc = 2048
+  symbolTableLastLoc <- gets symbolTableLastLoc
   let setupCode = [XSM_MOV_Int SP 4096, XSM_ADD_I SP symbolTableLastLoc]
+  let codeStart = loadLoc + length header + ((length setupCode) * 2)
   compiler <- get
   let instrs = setupCode ++ code compiler
   instrsTranslated <- mapM
@@ -142,6 +141,60 @@ getTranslatedCode = do
     instrs
   let codeLines = header ++ map toCode instrsTranslated
   return $ intercalate "\n" codeLines
+
+getTranslatedCodeNumbered :: Compiler String
+getTranslatedCodeNumbered = do
+  let header = zipWith (\i s -> show i ++ ":\t" ++ s)
+                       [2048 :: Int ..]
+                       ["0", "2056", "0", "0", "0", "0", "0", "0"]
+  let loadLoc = 2048
+  symbolTableLastLoc <- gets symbolTableLastLoc
+  let setupCode = [XSM_MOV_Int SP 4096, XSM_ADD_I SP symbolTableLastLoc]
+  let codeStart = loadLoc + length header + ((length setupCode) * 2)
+  compiler <- get
+  let instrs = setupCode ++ code compiler
+  instrsTranslated <- mapM
+    (\instr -> case instr of
+      XSM_UTJ jmp -> do
+        let label = utjGetLabel jmp
+        loc <- labelTranslate label
+        let loc' = (loc * 2) + codeStart
+        return $ utjTranslate jmp loc'
+      _ -> return instr
+    )
+    instrs
+  let body = map toCode instrsTranslated
+  let codeLines =
+        header
+          ++ zipWith (\i s -> show i ++ ":\t" ++ s) [2056 :: Int, 2058 ..] body
+
+  return $ unlines codeLines
+
+getUntranslatedCode :: Compiler String
+getUntranslatedCode = do
+  let header = ["0", "2056", "0", "0", "0", "0", "0", "0"]
+  let loadLoc   = 2048
+  let codeStart = length header + loadLoc
+  symbolTableLastLoc <- gets symbolTableLastLoc
+  let setupCode = [XSM_MOV_Int SP 4096, XSM_ADD_I SP symbolTableLastLoc]
+  compiler <- get
+  let codeLabelled = prependLabels (map toCodeUntranslated $ code compiler)
+                                   0
+                                   (HM.toList $ labels compiler)
+  let codeLines = header ++ map toCodeUntranslated setupCode ++ codeLabelled
+  return $ intercalate "\n" codeLines
+
+prependLabels :: [String] -> Int -> [(String, Int)] -> [String]
+prependLabels code i labels = case labels of
+  []                     -> code
+  ((label, j) : labels') -> case code of
+    []          -> (label ++ ":\t") : prependLabels [] (i + 1) labels'
+    (c : code') -> if i == j
+      then
+        let c' = label ++ ":\t" ++ c
+        in  c' : prependLabels code' (i + 1) labels'
+      else ("\t" ++ c) : prependLabels code' (i + 1) labels
+
 
 labelTranslate :: Label -> Compiler Int
 labelTranslate label = do
