@@ -139,22 +139,40 @@ StmtIfElse:
       '}' 
                           {% mkStmtIfElse $3 $6 $10 (getSpanBwn $1 $11)}
 
-StmtWhile:
-      while '(' Exp ')' do 
-        Slist 
-      endwhile 
-                          {% mkStmtWhile $3 $6 (getSpanBwn $1 $7)}
+StmtWhileEnter1:
+      while '(' Exp ')' do {% pushLoopStack >> return $3 }
 
-    | while '(' Exp ')' '{' 
+StmtWhileExit1:
+      endwhile             {% popLoopStack >> return $1 }
+
+StmtWhileEnter2:
+      while '(' Exp ')' '{' {% pushLoopStack >> return $3 }
+
+StmtWhileExit2:
+      '}'                   {% popLoopStack >> return $1 }
+
+StmtWhile:
+      StmtWhileEnter1
         Slist 
-      '}' 
-                          {% mkStmtWhile $3 $6 (getSpanBwn $1 $7)}
+      StmtWhileExit1 
+                          {% mkStmtWhile $1 $2 (getSpanBwn $1 $3)}
+
+    | StmtWhileEnter2
+        Slist 
+      StmtWhileExit2
+                          {% mkStmtWhile $1 $2 (getSpanBwn $1 $3)}
+
+StmtDoWhileEnter:
+      do '{'              {% pushLoopStack >> return $1 }
+
+StmtDoWhileExit:
+      '}' while '(' Exp ')' {% popLoopStack >> return $4 }
 
 StmtDoWhile:
-      do '{' 
+      StmtDoWhileEnter
         Slist 
-      '}' while '(' Exp ')' 
-                          {% mkStmtDoWhile $7 $3 (getSpanBwn $1 $8)}
+      StmtDoWhileExit
+                          {% mkStmtDoWhile $3 $2 (getSpanBwn $1 $3)}
 
 StmtBreak:
       break ';'           {% mkStmtBreak (getSpanBwn $1 $2)}

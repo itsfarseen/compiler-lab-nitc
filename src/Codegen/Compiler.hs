@@ -13,8 +13,10 @@ import Symbol (Symbol)
 import SymbolTable (SymbolTable)
 import qualified SymbolTable
 import Span
+import Error (Error)
+import qualified Error
 
-type Compiler = StateT CompilerState (Either CompilerError)
+type Compiler = StateT CompilerState (Either Error)
 
 data CompilerState =
   CompilerState
@@ -48,12 +50,9 @@ initCompilerState symTab = CompilerState { freeRegs           = [R0 .. R19]
   (lastLoc, symTabExt) = SymbolTable.map genExt 0 symTab
   genExt lastLoc _ = (lastLoc + 1, lastLoc + 1)
 
-runCompiler :: SymbolTable () -> Compiler a -> Either CompilerError a
-runCompiler symtab compiler = evalStateT compiler (initCompilerState symtab)
+runCompiler :: Compiler a -> SymbolTable () -> Either Error a
+runCompiler compiler symtab = evalStateT compiler (initCompilerState symtab)
 
-data CompilerError =
-  OutOfRegisters
-  deriving (Show)
 
 getIdentLocInStack :: String -> Compiler Int
 getIdentLocInStack ident =
@@ -66,7 +65,7 @@ getFreeReg = do
     (r : rs) -> do
       put $ compiler { freeRegs = rs }
       return r
-    [] -> throwError OutOfRegisters
+    [] -> throwError $ Error.compilerError "out of registers" (Span 0 0)
 
 releaseReg :: Reg -> Compiler ()
 releaseReg reg = do

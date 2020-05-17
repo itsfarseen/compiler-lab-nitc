@@ -9,6 +9,9 @@ type Error = [(String, Span)]
 syntaxError :: Span -> Error
 syntaxError span = [("Syntax Error", span)]
 
+compilerError :: String -> Span -> Error
+compilerError s span = [("Compiler Error: " ++ s, span)]
+
 identifierNotDeclared :: String -> Span -> Error
 identifierNotDeclared identName span =
   [("Identifier not declared: " ++ identName, span)]

@@ -33,12 +33,18 @@ instance AlexInputState Frontend where
   getAlexInput = gets alexInput
   putAlexInput alexInput = modify $ \s -> s { alexInput }
 
--- init :: String -> Frontend
--- init sourceCode = do
---   PState { psInput = UString.encode sourceCode, psTokenOffset = 0 }
+initData :: String -> FrontendData
+initData sourceCode =
+  let alexInput = AlexInput { alexInputStr    = UString.encode sourceCode
+                            , alexTokenOffset = 0
+                            }
+  in  FrontendData { alexInput
+                   , symbolTable = SymbolTable.initSymbolTable
+                   , loopStack   = LoopStack.init
+                   }
 
--- evalP :: P a -> PState -> Either E.Error a
--- evalP = evalStateT
+runFrontend :: FrontendData -> Frontend a -> Either Error a
+runFrontend initData (Frontend state) = runExcept $ evalStateT state initData
 
 -- Instances
 
@@ -54,3 +60,7 @@ instance SymbolTableWriter Frontend where
 instance LoopStackReader Frontend where
   -- getLoopStack :: m LoopStack
   getLoopStack = gets loopStack
+
+instance LoopStackWriter Frontend where
+  -- getLoopStack :: m LoopStack
+  putLoopStack loopStack = modify $ \frontendData -> frontendData { loopStack }

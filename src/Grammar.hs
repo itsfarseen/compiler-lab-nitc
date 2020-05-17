@@ -12,6 +12,7 @@ module Grammar (
   StmtIf(..), mkStmtIf,
   StmtIfElse(..), mkStmtIfElse,
   StmtWhile(..), mkStmtWhile,
+  pushLoopStack, popLoopStack,
   StmtDoWhile(..), mkStmtDoWhile,
   StmtBreak(..), mkStmtBreak,
   StmtContinue(..), mkStmtContinue,
@@ -21,7 +22,7 @@ module Grammar (
   ExpIdent(..),
   ExpPure(..),
   SymbolTableReader(..), SymbolTableWriter(..), SymbolTableRW,
-  LoopStackReader(..)
+  LoopStackReader(..), LoopStackWriter(..)
 ) where
 
 import           Control.Error.Safe
@@ -39,6 +40,7 @@ import Control.Monad.Except ( MonadError, liftEither, throwError )
 import Control.Monad (unless)
 import Data.Bifunctor (first)
 import Data.Either.Extra (maybeToEither)
+import Data.Maybe (fromJust)
 
 type Symbol = Symbol.Symbol ()
 type SymbolTable = SymbolTable.SymbolTable ()
@@ -159,6 +161,13 @@ mkStmtIfElse exp thenBody elseBody span = do
     dataType
     span
   return $ MkStmtIfElse exp thenBody elseBody span
+
+pushLoopStack :: (LoopStackReader m, LoopStackWriter m) => m ()
+pushLoopStack = getLoopStack >>= (putLoopStack . LoopStack.push)
+
+popLoopStack :: (LoopStackReader m, LoopStackWriter m) => m ()
+popLoopStack = getLoopStack >>= (putLoopStack . fromJust . LoopStack.pop)
+
 
 data StmtWhile = MkStmtWhile Exp [Stmt] Span
 
@@ -284,3 +293,6 @@ type SymbolTableRW m = (SymbolTableReader m, SymbolTableWriter m)
 
 class Monad m => LoopStackReader m where
   getLoopStack :: m LoopStack
+
+class Monad m => LoopStackWriter m where
+  putLoopStack :: LoopStack -> m ()
