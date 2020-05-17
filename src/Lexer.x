@@ -111,9 +111,13 @@ tokenInt action = \s span -> action $ SpanW (read s) span
 -- type AlexInput = Frontend.AlexInput
 
 alexGetByte :: AlexInput -> Maybe (Word8, AlexInput)
-alexGetByte alexInput@AlexInput { alexInputStr } = case alexInputStr of
-  (b : bs) -> Just (b, alexInput { alexInputStr = bs })
-  []       -> Nothing
+alexGetByte alexInput@AlexInput {alexInputStr, alexTokenOffset} =
+  case alexInputStr of
+    (b:bs) ->
+      Just
+        ( b
+        , alexInput {alexInputStr = bs, alexTokenOffset = alexTokenOffset + 1})
+    [] -> Nothing
 
 alexInputPrevChar = undefined -- because our tokens regexes don't need this.
 
@@ -144,9 +148,9 @@ readToken = do
   case alexScan alexInput 0 of
     AlexEOF     -> return $ TokenEOF $ Span alexTokenOffset 0
     AlexError _ -> throwError $ Error.syntaxError $ Span alexTokenOffset 1
-    AlexSkip alexInput'@AlexInput { alexTokenOffset = alexTokenOffset' } len ->
+    AlexSkip alexInput' _ ->
       do
-        putAlexInput $ alexInput' { alexTokenOffset = alexTokenOffset' + len }
+        putAlexInput $ alexInput'
         readToken
     AlexToken alexInput' len tk 
       -> do
