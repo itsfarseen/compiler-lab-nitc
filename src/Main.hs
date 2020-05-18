@@ -61,7 +61,6 @@ main = do
         mapM_ (\(str, span) -> printError str span input inputFile) error
       Right _ -> return ()
 
-
 printError :: String -> Span -> String -> String -> IO ()
 printError errorName errorSpan input inputFile = do
   let errorFullSpan              = getFullSpan errorSpan input
