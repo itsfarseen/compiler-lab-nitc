@@ -1,11 +1,11 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE DataKinds #-}
 
-module Codegen.Codegen where
+module Backend.Codegen where
 
-import Codegen.Compiler
-import Codegen.Instructions
-import Codegen.Reg
+import Backend.Compiler
+import Backend.Instructions
+import Backend.Reg
 import Control.Monad.Except
 import Control.Monad.State.Strict (gets)
 import Data.List

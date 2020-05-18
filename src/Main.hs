@@ -8,9 +8,9 @@ import System.Exit
 import System.FilePath
 import System.IO
 
-import qualified Codegen.Codegen as Codegen
-import Codegen.Compiler (Compiler)
-import qualified Codegen.Compiler as Compiler
+import qualified Backend.Codegen as Codegen
+import Backend.Compiler (Compiler)
+import qualified Backend.Compiler as Compiler
 import Frontend
 import Parser
 import Span

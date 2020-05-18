@@ -1,6 +1,6 @@
-module Codegen.Instructions where
+module Backend.Instructions where
 
-import Codegen.Reg
+import Backend.Reg
 
 data XSMInstr
   = XSM_MOV_R Reg Reg

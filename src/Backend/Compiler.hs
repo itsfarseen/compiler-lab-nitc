@@ -1,7 +1,7 @@
-module Codegen.Compiler where
+module Backend.Compiler where
 
-import Codegen.Instructions
-import Codegen.Reg
+import Backend.Instructions
+import Backend.Reg
 import Control.Monad.Except
 import Control.Monad.State
 import qualified Data.HashMap.Strict as HM

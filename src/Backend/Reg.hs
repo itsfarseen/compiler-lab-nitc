@@ -1,4 +1,4 @@
-module Codegen.Reg where
+module Backend.Reg where
 
 data Reg
   = R0
