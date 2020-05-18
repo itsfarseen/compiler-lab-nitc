@@ -12,6 +12,7 @@ import qualified Backend.Codegen as Codegen
 import Backend.Compiler (Compiler)
 import qualified Backend.Compiler as Compiler
 import qualified Backend.CompilerUtils as CompilerUtils
+import qualified Backend.CodeUtils as CodeUtils
 import Frontend
 import Parser
 import Span
@@ -32,22 +33,19 @@ frontend = do
   symtab  <- gets Frontend.symbolTable
   return (program, symtab)
 
-backend :: Grammar.Program -> Bool -> Bool -> Compiler String
-backend program isUntranslated isNumbered = do
+backend :: Grammar.Program -> CodeUtils.CodeOutputMode -> Compiler String
+backend program mode = do
   Codegen.parseProgram program
-  if isUntranslated
-    then CompilerUtils.getUntranslatedCode
-    else if isNumbered
-      then CompilerUtils.getTranslatedCodeNumbered
-      else CompilerUtils.getTranslatedCode
+  CodeUtils.getCode mode
+
 
 main :: IO ()
 main = do
   args_ <- getArgs
-  let (isUntranslated, isNumbered, args) = case args_ of
-        ("-u" : args') -> (True, False, args')
-        ("-n" : args') -> (False, True, args')
-        _              -> (False, False, args_)
+  let (codeOutputMode, args) = case args_ of
+        ("-u" : args') -> (CodeUtils.CodeOutputUntranslated, args')
+        ("-n" : args') -> (CodeUtils.CodeOutputTranslatedWithAddress, args')
+        _              -> (CodeUtils.CodeOutputTranslated, args_)
 
   (inputFile, outputFile) <- case args of
     [inputFile] -> return (inputFile, replaceExtension inputFile ".xsm")
@@ -60,7 +58,7 @@ main = do
     (program, symtab) <- liftEither
       $ Frontend.runFrontend (Frontend.initData input) frontend
     output <- liftEither
-      $ Compiler.runCompiler (backend program isUntranslated isNumbered) symtab
+      $ Compiler.runCompiler (backend program codeOutputMode) symtab
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()
