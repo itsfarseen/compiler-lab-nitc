@@ -4,6 +4,7 @@
 module Backend.Codegen where
 
 import Backend.Compiler
+import Backend.CompilerUtils
 import Backend.Instructions
 import Backend.Reg
 import Control.Monad.Except

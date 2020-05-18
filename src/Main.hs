@@ -11,6 +11,7 @@ import System.IO
 import qualified Backend.Codegen as Codegen
 import Backend.Compiler (Compiler)
 import qualified Backend.Compiler as Compiler
+import qualified Backend.CompilerUtils as CompilerUtils
 import Frontend
 import Parser
 import Span
@@ -35,10 +36,10 @@ backend :: Grammar.Program -> Bool -> Bool -> Compiler String
 backend program isUntranslated isNumbered = do
   Codegen.parseProgram program
   if isUntranslated
-    then Compiler.getUntranslatedCode
+    then CompilerUtils.getUntranslatedCode
     else if isNumbered
-      then Compiler.getTranslatedCodeNumbered
-      else Compiler.getTranslatedCode
+      then CompilerUtils.getTranslatedCodeNumbered
+      else CompilerUtils.getTranslatedCode
 
 main :: IO ()
 main = do
