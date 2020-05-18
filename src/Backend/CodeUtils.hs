@@ -28,7 +28,7 @@ getCode mode = do
     else
       (do
         let code' = labelTranslate
-              (loadLoc + length header + ((length setupCode) * 2))
+              (loadLoc + length header + (length setupCode * 2))
               code
               labels
         return $ map Instructions.toString code'

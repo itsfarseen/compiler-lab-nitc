@@ -14,7 +14,6 @@ import           Span
 import           SymbolTable (SymbolTable)
 import qualified SymbolTable
 
-
 getIdentLocInStack :: String -> Compiler Int
 getIdentLocInStack ident = (4096 +)
   <$> gets (symbolLoc . fromJust . SymbolTable.lookup ident . symbolTable)
