@@ -3,6 +3,7 @@ module Backend.CodeUtils where
 import Backend.Compiler
 import Backend.Instructions as Instructions
 import qualified Data.HashMap.Strict as HM
+import Data.List (sortOn)
 import Control.Monad.State.Strict
 import Backend.Reg
 
@@ -38,7 +39,7 @@ getCode mode = do
       let (headerNumbered, codeNumbered) =
             prependAddress loadLoc header (setupCodeStr ++ codeStr)
       in  return $ unlines $ headerNumbered ++ codeNumbered
-    else return $ unlines $ header ++ setupCodeStr ++ codeStr
+    else return $ unlines $ header ++ setupCodeStr ++ codeStr ++ ["HALT"]
 
 
 prependAddress :: Int -> [String] -> [String] -> ([String], [String])
@@ -65,13 +66,15 @@ labelTranslate offset instrs labels = map
 
 -- TODO: Change to zipWith3
 prependLabels :: [String] -> Int -> [(String, Int)] -> [String]
-prependLabels code i labels = case labels of
-  []                     -> code
-  ((label, j) : labels') -> case code of
-    []          -> (label ++ ":\t") : prependLabels [] (i + 1) labels'
-    (c : code') -> if i == j
-      then
-        let c' = label ++ ":\t" ++ c
-        in  c' : prependLabels code' (i + 1) labels'
-      else ("\t" ++ c) : prependLabels code' (i + 1) labels
+prependLabels code i labels =
+  let labelsSorted = sortOn snd labels
+  in  case labelsSorted of
+        []                     -> code
+        ((label, j) : labels') -> case code of
+          []          -> (label ++ ":\t") : prependLabels [] (i + 1) labels'
+          (c : code') -> if i == j
+            then
+              let c' = label ++ ":\t" ++ c
+              in  c' : prependLabels code' (i + 1) labels'
+            else ("\t" ++ c) : prependLabels code' (i + 1) labels
 
