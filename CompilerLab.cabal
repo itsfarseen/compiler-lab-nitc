@@ -36,10 +36,11 @@ executable CompilerLab
       , Backend.Reg
       , Backend.CompilerUtils
       , Backend.CodeUtils
+      , Backend.Main
   hs-source-dirs:
       src
---   ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -Wno-unused-imports
+  -- ghc-options: -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -Wno-unused-imports -O0
   build-depends:
       base
     , flow

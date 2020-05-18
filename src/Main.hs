@@ -10,9 +10,8 @@ import System.IO
 
 import qualified Backend.Codegen as Codegen
 import Backend.Compiler (Compiler)
-import qualified Backend.Compiler as Compiler
-import qualified Backend.CompilerUtils as CompilerUtils
 import qualified Backend.CodeUtils as CodeUtils
+import qualified Backend.Main
 import Frontend
 import Parser
 import Span
@@ -33,12 +32,6 @@ frontend = do
   symtab  <- gets Frontend.symbolTable
   return (program, symtab)
 
-backend :: Grammar.Program -> CodeUtils.CodeOutputMode -> Compiler String
-backend program mode = do
-  Codegen.parseProgram program
-  CodeUtils.getCode mode
-
-
 main :: IO ()
 main = do
   args_ <- getArgs
@@ -57,8 +50,7 @@ main = do
   handleError input inputFile $ do
     (program, symtab) <- liftEither
       $ Frontend.runFrontend (Frontend.initData input) frontend
-    output <- liftEither
-      $ Compiler.runCompiler (backend program codeOutputMode) symtab
+    output <- liftEither $ Backend.Main.main program codeOutputMode symtab
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()
