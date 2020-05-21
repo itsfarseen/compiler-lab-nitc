@@ -4,6 +4,7 @@
 
 module Grammar (
   Program(..),
+  Ident(..), mkIdent,
   Stmt(..),
   StmtDeclare(..), mkStmtDeclare,
   StmtAssign(..), mkStmtAssign,
@@ -40,7 +41,7 @@ import Control.Monad.Except ( MonadError, liftEither, throwError )
 import Control.Monad (unless)
 import Data.Bifunctor (first)
 import Data.Either.Extra (maybeToEither)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
 
 type Symbol = Symbol.Symbol ()
 type SymbolTable = SymbolTable.SymbolTable ()
@@ -59,6 +60,16 @@ data Stmt
   | StmtBreak StmtBreak
   | StmtContinue StmtContinue
 
+data Ident = MkIdent String Span
+
+mkIdent
+  :: (MonadError Error m, SymbolTableReader m) => String -> Span -> m Ident
+mkIdent name span = do
+  symtab <- getSymtab
+  unless (isJust (SymbolTable.lookup name symtab))
+         (throwError (Error.identifierNotDeclared name span))
+  return $ MkIdent name span
+
 data StmtDeclare = MkStmtDeclare String DataType Span
 
 mkStmtDeclare
@@ -67,32 +78,32 @@ mkStmtDeclare
   -> DataType
   -> Span
   -> m StmtDeclare
-mkStmtDeclare ident dataType span = do
+mkStmtDeclare identName dataType span = do
   symtab  <- getSymtab
   symtab' <- (SymbolTable.insert symbol symtab |> throwSymbolExists)
   putSymtab symtab'
-  return $ MkStmtDeclare ident dataType span
+  return $ MkStmtDeclare identName dataType span
  where
-  symbol = Symbol { Symbol.name     = ident
+  symbol = Symbol { Symbol.name     = identName
                   , Symbol.declSpan = span
                   , Symbol.dataType = dataType
                   , Symbol.ext      = ()
                   }
   throwSymbolExists = liftEither . first
     (\(SymbolTable.SymbolExists symbol1) ->
-      Error.identifierRedeclared ident (Symbol.declSpan symbol1) span
+      Error.identifierRedeclared identName (Symbol.declSpan symbol1) span
     )
 
-data StmtAssign = MkStmtAssign String Exp Span
+data StmtAssign = MkStmtAssign Ident Exp Span
 
 mkStmtAssign
   :: (MonadError Error m, SymbolTableReader m)
-  => SpanW String
+  => Ident
   -> Exp
   -> Span
   -> m StmtAssign
-mkStmtAssign (SpanW ident identSpan) exp span = do
-  symbol <- identSymbol ident identSpan
+mkStmtAssign ident exp span = do
+  symbol <- identSymbol ident
   let lhsType = Symbol.dataType symbol
   rhsType <- expDataType exp
   unless (lhsType == rhsType) $ throwError $ Error.assignmentTypeMismatch
@@ -102,15 +113,12 @@ mkStmtAssign (SpanW ident identSpan) exp span = do
     span
   return $ MkStmtAssign ident exp span
 
-data StmtRead = MkStmtRead String Span
+data StmtRead = MkStmtRead Ident Span
 
 mkStmtRead
-  :: (MonadError Error m, SymbolTableReader m)
-  => SpanW String
-  -> Span
-  -> m StmtRead
-mkStmtRead (SpanW ident identSpan) span = do
-  dataType <- identDataType ident identSpan
+  :: (MonadError Error m, SymbolTableReader m) => Ident -> Span -> m StmtRead
+mkStmtRead ident span = do
+  dataType <- identDataType ident
   unless (dataType == Symbol.DataTypeInt) $ throwError $ Error.typeNotAllowed
     [Symbol.DataTypeInt]
     dataType
@@ -226,7 +234,7 @@ data OpLogical = OpLT | OpGT | OpLE | OpGE | OpEQ | OpNE
 
 data Exp = ExpIdent ExpIdent | ExpPure ExpPure
 
-data ExpIdent = MkExpIdent String Span
+data ExpIdent = MkExpIdent Ident
 
 data ExpPure
   = ExpNum Int Span
@@ -236,18 +244,14 @@ data ExpPure
 
 -- Helper Functions
 
-identSymbol
-  :: (MonadError Error m, SymbolTableReader m) => String -> Span -> m Symbol
-identSymbol ident span = do
-  symtab <- getSymtab
-  SymbolTable.lookup ident symtab |> throwIdentNotDeclared
- where
-  throwIdentNotDeclared =
-    liftEither . maybeToEither (Error.identifierNotDeclared ident span)
+identSymbol :: (SymbolTableReader m) => Ident -> m Symbol
+identSymbol ident = do
+  let (MkIdent identName _) = ident
+  fromJust . SymbolTable.lookup identName <$> getSymtab
 
 identDataType
-  :: (MonadError Error m, SymbolTableReader m) => String -> Span -> m DataType
-identDataType ident span = Symbol.dataType <$> identSymbol ident span
+  :: (MonadError Error m, SymbolTableReader m) => Ident -> m DataType
+identDataType ident = Symbol.dataType <$> identSymbol ident
 
 expDataType :: (MonadError Error m, SymbolTableReader m) => Exp -> m DataType
 expDataType (ExpIdent exp) = expIdentDataType exp
@@ -261,10 +265,12 @@ expPureDataType exp = case exp of
 
 expIdentDataType
   :: (MonadError Error m, SymbolTableReader m) => ExpIdent -> m DataType
-expIdentDataType exp = identDataType ident (getSpan exp)
-  where MkExpIdent ident _ = exp
+expIdentDataType exp = identDataType ident where MkExpIdent ident = exp
 
 -- HasSpan instances
+
+instance HasSpan Ident where
+  getSpan (MkIdent _ span) = span
 
 instance HasSpan Exp where
   getSpan exp = case exp of
@@ -273,7 +279,7 @@ instance HasSpan Exp where
 
 instance HasSpan ExpIdent where
   getSpan exp = case exp of
-    MkExpIdent _ span -> span
+    MkExpIdent ident -> getSpan ident
 
 instance HasSpan ExpPure where
   getSpan exp = case exp of

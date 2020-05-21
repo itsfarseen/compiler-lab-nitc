@@ -103,10 +103,10 @@ StmtDeclare:
     DataType ident ';'     {% mkStmtDeclare (spanWVal $2) (spanWVal $1) (getSpanBwn $1 $3)}
 
 StmtAssign:
-    ident '=' Exp ';'     {% mkStmtAssign $1 $3 (getSpanBwn $1 $4)}
+    Ident '=' Exp ';'     {% mkStmtAssign $1 $3 (getSpanBwn $1 $4)}
 
 StmtRead:
-    read '(' ident ')' ';' 
+    read '(' Ident ')' ';' 
                           {% mkStmtRead $3 (getSpanBwn $1 $5)}
 
 StmtWrite:
@@ -180,9 +180,12 @@ StmtBreak:
 StmtContinue:
       continue ';'        {% mkStmtContinue (getSpanBwn $1 $2)}
 
+Ident:
+     ident                {% mkIdent (spanWVal $1) (getSpan $1)}
+
 Exp: 
      number               {ExpPure $ ExpNum (spanWVal $1) (getSpan $1)}
-   | ident                {ExpIdent $ MkExpIdent (spanWVal $1) (getSpan $1)}
+   | Ident                {ExpIdent $ MkExpIdent $1}
    | '(' Exp ')'          {$2}
    | Exp '+' Exp          {ExpPure $ ExpArithmetic $1 OpAdd $3 (getSpanBwn $1 $3)}
    | Exp '-' Exp          {ExpPure $ ExpArithmetic $1 OpSub $3 (getSpanBwn $1 $3)}

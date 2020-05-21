@@ -169,14 +169,14 @@ execALUInstr instr e1 e2 = do
   releaseReg r2
   return r1
 
-getIdentInReg :: String -> Compiler Reg
+getIdentInReg :: Ident -> Compiler Reg
 getIdentInReg ident = do
   loc <- getIdentLocInStack ident
   r   <- getFreeReg
   appendCode [XSM_MOV_DirSrc r loc]
   return r
 
-moveToIdent :: String -> Reg -> Compiler ()
+moveToIdent :: Ident -> Reg -> Compiler ()
 moveToIdent ident reg = do
   loc <- getIdentLocInStack ident
   appendCode [XSM_MOV_DirDst loc reg]
@@ -189,7 +189,7 @@ parseExp exp = case exp of
     return r
   (ExpPure  (ExpArithmetic e1 op e2 _)) -> execALUInstr (arithOpInstr op) e1 e2
   (ExpPure  (ExpLogical    e1 op e2 _)) -> execALUInstr (logicOpInstr op) e1 e2
-  (ExpIdent (MkExpIdent ident _      )) -> getIdentInReg ident
+  (ExpIdent (MkExpIdent ident        )) -> getIdentInReg ident
 
 arithOpInstr :: OpArithmetic -> (Reg -> Reg -> XSMInstr)
 arithOpInstr op = case op of

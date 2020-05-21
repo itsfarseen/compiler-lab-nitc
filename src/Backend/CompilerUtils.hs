@@ -13,10 +13,12 @@ import           Error
 import           Span
 import           SymbolTable (SymbolTable)
 import qualified SymbolTable
+import Grammar
 
-getIdentLocInStack :: String -> Compiler Int
+getIdentLocInStack :: Ident -> Compiler Int
 getIdentLocInStack ident = (4096 +)
-  <$> gets (symbolLoc . fromJust . SymbolTable.lookup ident . symbolTable)
+  <$> gets (symbolLoc . fromJust . SymbolTable.lookup identName . symbolTable)
+  where MkIdent identName _ = ident
 
 getFreeReg :: Compiler Reg
 getFreeReg = do
