@@ -94,39 +94,36 @@ execStmtIfElse stmt = do
   mapM_ execStmt stmtsElse
   installLabel endLabel
 
-execStmtWhile :: StmtWhile -> Compiler ()
-execStmtWhile stmt = do
-  let MkStmtWhile expBool stmts _ = stmt
+loopBody :: (String -> String -> Compiler ()) -> Compiler ()
+loopBody body = do
   startLabel <- getNewLabel
   endLabel   <- getNewLabel
   pushLoopContinueLabel startLabel
   pushLoopBreakLabel endLabel
   installLabel startLabel
-  r <- parseExp expBool
-  appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
-  mapM_ execStmt stmts
-  appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
+  body startLabel endLabel
   installLabel endLabel
   _ <- popLoopContinueLabel
   _ <- popLoopBreakLabel
   return ()
 
+execStmtWhile :: StmtWhile -> Compiler ()
+execStmtWhile stmt = do
+  let MkStmtWhile expBool stmts _ = stmt
+  loopBody $ \startLabel endLabel -> do
+    r <- parseExp expBool
+    appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
+    mapM_ execStmt stmts
+    appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
+
 execStmtDoWhile :: StmtDoWhile -> Compiler ()
 execStmtDoWhile stmt = do
   let MkStmtDoWhile expBool stmts _ = stmt
-  startLabel <- getNewLabel
-  endLabel   <- getNewLabel
-  pushLoopContinueLabel startLabel
-  pushLoopBreakLabel endLabel
-  installLabel startLabel
-  mapM_ execStmt stmts
-  r <- parseExp expBool
-  appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
-  appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
-  installLabel endLabel
-  _ <- popLoopContinueLabel
-  _ <- popLoopBreakLabel
-  return ()
+  loopBody $ \startLabel endLabel -> do
+    mapM_ execStmt stmts
+    r <- parseExp expBool
+    appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
+    appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
 
 execStmtBreak :: StmtBreak -> Compiler ()
 execStmtBreak _ = do
