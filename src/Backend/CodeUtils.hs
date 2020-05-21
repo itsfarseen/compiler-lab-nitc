@@ -64,7 +64,6 @@ labelTranslate offset instrs labels = map
   instrs
 
 
--- TODO: Change to zipWith3
 prependLabels :: [String] -> Int -> [(String, Int)] -> [String]
 prependLabels code i labels =
   let labelsSorted = sortOn snd labels

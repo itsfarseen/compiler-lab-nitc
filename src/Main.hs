@@ -8,17 +8,15 @@ import System.Exit
 import System.FilePath
 import System.IO
 
-import qualified Backend.Codegen as Codegen
-import Backend.Compiler (Compiler)
-import qualified Backend.CodeUtils as CodeUtils
-import qualified Backend.Main
+import qualified Backend.Main as Backend
+import Error (Error)
 import Frontend
+import qualified Grammar
 import Parser
 import Span
-import qualified Grammar
-import SymbolTable(SymbolTable)
+import SymbolTable (SymbolTable)
 import qualified SymbolTable
-import Error (Error)
+
 
 prompt :: String -> IO String
 prompt text = do
@@ -36,9 +34,9 @@ main :: IO ()
 main = do
   args_ <- getArgs
   let (codeOutputMode, args) = case args_ of
-        ("-u" : args') -> (CodeUtils.CodeOutputUntranslated, args')
-        ("-n" : args') -> (CodeUtils.CodeOutputTranslatedWithAddress, args')
-        _              -> (CodeUtils.CodeOutputTranslated, args_)
+        ("-u" : args') -> (Backend.CodeOutputUntranslated, args')
+        ("-n" : args') -> (Backend.CodeOutputTranslatedWithAddress, args')
+        _              -> (Backend.CodeOutputTranslated, args_)
 
   (inputFile, outputFile) <- case args of
     [inputFile] -> return (inputFile, replaceExtension inputFile ".xsm")
@@ -50,7 +48,7 @@ main = do
   handleError input inputFile $ do
     (program, symtab) <- liftEither
       $ Frontend.runFrontend (Frontend.initData input) frontend
-    output <- liftEither $ Backend.Main.main program codeOutputMode symtab
+    output <- liftEither $ Backend.main program codeOutputMode symtab
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()

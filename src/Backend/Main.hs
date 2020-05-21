@@ -1,4 +1,4 @@
-module Backend.Main where
+module Backend.Main (main, CodeOutputMode(..)) where
 
 import qualified Backend.CodeUtils as CodeUtils
 import Backend.CodeUtils (CodeOutputMode)
