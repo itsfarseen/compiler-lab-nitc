@@ -24,6 +24,8 @@ data Token
   | TokenParClose Span
   | TokenBraceOpen Span
   | TokenBraceClose Span
+  | TokenSqBracketOpen Span
+  | TokenSqBracketClose Span
   -- Keywords
   | TokenBegin Span
   | TokenEnd Span
@@ -50,46 +52,48 @@ data Token
 
 instance HasSpan Token where
   getSpan token = case token of
-    TokenPlus       span           -> span
-    TokenMinus      span           -> span
-    TokenStar       span           -> span
-    TokenFwdSlash   span           -> span
-    TokenPercent    span           -> span
+    TokenPlus           span           -> span
+    TokenMinus          span           -> span
+    TokenStar           span           -> span
+    TokenFwdSlash       span           -> span
+    TokenPercent        span           -> span
     -- Bool
-    TokenLT         span           -> span
-    TokenEQ         span           -> span
-    TokenNE         span           -> span
-    TokenGT         span           -> span
-    TokenLE         span           -> span
-    TokenGE         span           -> span
+    TokenLT             span           -> span
+    TokenEQ             span           -> span
+    TokenNE             span           -> span
+    TokenGT             span           -> span
+    TokenLE             span           -> span
+    TokenGE             span           -> span
     -- Assignment
-    TokenEquals     span           -> span
+    TokenEquals         span           -> span
     -- Punctuation
-    TokenSemiColon  span           -> span
-    TokenParOpen    span           -> span
-    TokenParClose   span           -> span
-    TokenBraceOpen  span           -> span
-    TokenBraceClose span           -> span
+    TokenSemiColon      span           -> span
+    TokenParOpen        span           -> span
+    TokenParClose       span           -> span
+    TokenBraceOpen      span           -> span
+    TokenBraceClose     span           -> span
+    TokenSqBracketOpen  span           -> span
+    TokenSqBracketClose span           -> span
     -- Keywords
-    TokenBegin      span           -> span
-    TokenEnd        span           -> span
-    TokenRead       span           -> span
-    TokenWrite      span           -> span
-    TokenIf         span           -> span
-    TokenThen       span           -> span
-    TokenElse       span           -> span
-    TokenEndIf      span           -> span
-    TokenWhile      span           -> span
-    TokenEndWhile   span           -> span
-    TokenDo         span           -> span
-    TokenBreak      span           -> span
-    TokenContinue   span           -> span
-    TokenInt        span           -> span
-    TokenBool       span           -> span
-    TokenString     span           -> span
+    TokenBegin          span           -> span
+    TokenEnd            span           -> span
+    TokenRead           span           -> span
+    TokenWrite          span           -> span
+    TokenIf             span           -> span
+    TokenThen           span           -> span
+    TokenElse           span           -> span
+    TokenEndIf          span           -> span
+    TokenWhile          span           -> span
+    TokenEndWhile       span           -> span
+    TokenDo             span           -> span
+    TokenBreak          span           -> span
+    TokenContinue       span           -> span
+    TokenInt            span           -> span
+    TokenBool           span           -> span
+    TokenString         span           -> span
     -- Constants, Identifier
-    TokenNumber     (SpanW _ span) -> span
-    TokenIdent      (SpanW _ span) -> span
+    TokenNumber         (SpanW _ span) -> span
+    TokenIdent          (SpanW _ span) -> span
     -- EOF
-    TokenEOF        span           -> span
+    TokenEOF            span           -> span
       -- Arithmetic

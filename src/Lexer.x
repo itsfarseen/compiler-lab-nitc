@@ -37,6 +37,8 @@ $par_open    = \(
 $par_close   = \)
 $brace_open  = \{
 $brace_close = \}
+$sq_bracket_open  = \[
+$sq_bracket_close = \]
 
 @begin       = "begin"
 @end         = "end"
@@ -80,6 +82,8 @@ tokens :-
     $par_close   {token TokenParClose}
     $brace_open  {token TokenBraceOpen}
     $brace_close {token TokenBraceClose}
+    $sq_bracket_open  {token TokenSqBracketOpen}
+    $sq_bracket_close {token TokenSqBracketClose}
 
     @begin       {token TokenBegin}
     @end         {token TokenEnd}
@@ -119,7 +123,7 @@ alexGetByte alexInput@AlexInput {alexInputStr, alexTokenOffset} =
         , alexInput {alexInputStr = bs, alexTokenOffset = alexTokenOffset + 1})
     [] -> Nothing
 
-alexInputPrevChar = undefined -- because our tokens regexes don't need this.
+alexInputPrevChar = undefined -- our tokens' regexes don't need prev char
 
 -- Alex will provide
 --
