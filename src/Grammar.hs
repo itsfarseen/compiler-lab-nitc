@@ -2,29 +2,47 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE PatternSynonyms #-}
 
-module Grammar (
-  Program(..),
-  Ident(..), mkIdent,
-  Stmt(..),
-  StmtDeclare(..), mkStmtDeclare,
-  StmtAssign(..), mkStmtAssign,
-  StmtRead(..), mkStmtRead,
-  StmtWrite(..), mkStmtWrite,
-  StmtIf(..), mkStmtIf,
-  StmtIfElse(..), mkStmtIfElse,
-  StmtWhile(..), mkStmtWhile,
-  pushLoopStack, popLoopStack,
-  StmtDoWhile(..), mkStmtDoWhile,
-  StmtBreak(..), mkStmtBreak,
-  StmtContinue(..), mkStmtContinue,
-  Exp(..),
-  OpArithmetic(..),
-  OpLogical(..),
-  ExpIdent(..),
-  ExpPure(..),
-  SymbolTableReader(..), SymbolTableWriter(..), SymbolTableRW,
-  LoopStackReader(..), LoopStackWriter(..)
-) where
+module Grammar
+  ( Program(..)
+  , Stmt(..)
+  , StmtDeclare(..)
+  , StmtAssign(..)
+  , StmtRead(..)
+  , StmtWrite(..)
+  , StmtIf(..)
+  , StmtIfElse(..)
+  , StmtWhile(..)
+  , StmtDoWhile(..)
+  , StmtBreak(..)
+  , StmtContinue(..)
+  , LValue(..)
+  , RValue(..)
+  , Ident(..)
+  , ArrayIndex(..)
+  , Exp(..)
+  , OpArithmetic(..)
+  , OpLogical(..)
+  , mkIdent
+  , mkStmtDeclare
+  , mkStmtAssign
+  , mkStmtRead
+  , mkStmtWrite
+  , mkStmtIf
+  , mkStmtIfElse
+  , mkStmtWhile
+  , mkStmtDoWhile
+  , mkStmtBreak
+  , mkStmtContinue
+  , mkArrayIndex
+  , SymbolTableReader(..)
+  , SymbolTableWriter(..)
+  , SymbolTableRW
+  , LoopStackReader(..)
+  , LoopStackWriter(..)
+  , pushLoopStack
+  , popLoopStack
+  ) where
+
 
 import           Control.Error.Safe
 import           Flow
@@ -60,7 +78,30 @@ data Stmt
   | StmtBreak StmtBreak
   | StmtContinue StmtContinue
 
+data StmtDeclare = MkStmtDeclare String DataType Span
+data StmtAssign = MkStmtAssign LValue RValue Span
+data StmtRead = MkStmtRead LValue Span
+data StmtWrite = MkStmtWrite RValue Span
+data StmtIf = MkStmtIf RValue [Stmt] Span
+data StmtIfElse = MkStmtIfElse RValue [Stmt] [Stmt] Span
+data StmtWhile = MkStmtWhile RValue [Stmt] Span
+data StmtDoWhile = MkStmtDoWhile RValue [Stmt] Span
+data StmtBreak = MkStmtBreak Span
+data StmtContinue = MkStmtContinue Span
+
+data LValue = LValueIdent Ident | LValueArrayIndex ArrayIndex
+data RValue = LValue LValue | Exp Exp
+
 data Ident = MkIdent String Span
+data ArrayIndex = MkArrayIndex Ident RValue Span
+
+data Exp
+  = ExpNum Int Span
+  | ExpArithmetic RValue OpArithmetic RValue Span
+  | ExpLogical RValue OpLogical RValue Span
+
+data OpArithmetic = OpAdd | OpSub | OpMul | OpDiv | OpMod
+data OpLogical = OpLT | OpGT | OpLE | OpGE | OpEQ | OpNE
 
 mkIdent
   :: (MonadError Error m, SymbolTableReader m) => String -> Span -> m Ident
@@ -69,8 +110,6 @@ mkIdent name span = do
   unless (isJust (SymbolTable.lookup name symtab))
          (throwError (Error.identifierNotDeclared name span))
   return $ MkIdent name span
-
-data StmtDeclare = MkStmtDeclare String DataType Span
 
 mkStmtDeclare
   :: (MonadError Error m, SymbolTableRW m)
@@ -94,122 +133,99 @@ mkStmtDeclare identName dataType span = do
       Error.identifierRedeclared identName (Symbol.declSpan symbol1) span
     )
 
-data StmtAssign = MkStmtAssign Ident Exp Span
-
 mkStmtAssign
   :: (MonadError Error m, SymbolTableReader m)
-  => Ident
-  -> Exp
+  => LValue
+  -> RValue
   -> Span
   -> m StmtAssign
-mkStmtAssign ident exp span = do
-  symbol <- identSymbol ident
-  let lhsType = Symbol.dataType symbol
-  rhsType <- expDataType exp
+mkStmtAssign lhs rhs span = do
+  lhsType     <- lValueDataType lhs
+  lhsDeclSpan <- lValueDeclSpan lhs
+  rhsType     <- rValueDataType rhs
   unless (lhsType == rhsType) $ throwError $ Error.assignmentTypeMismatch
     lhsType
-    (Symbol.declSpan symbol)
+    lhsDeclSpan
     rhsType
     span
-  return $ MkStmtAssign ident exp span
-
-data StmtRead = MkStmtRead Ident Span
+  return $ MkStmtAssign lhs rhs span
 
 mkStmtRead
-  :: (MonadError Error m, SymbolTableReader m) => Ident -> Span -> m StmtRead
-mkStmtRead ident span = do
-  dataType <- identDataType ident
+  :: (MonadError Error m, SymbolTableReader m) => LValue -> Span -> m StmtRead
+mkStmtRead lhs span = do
+  dataType <- lValueDataType lhs
   unless (dataType == Symbol.DataTypeInt) $ throwError $ Error.typeNotAllowed
     [Symbol.DataTypeInt]
     dataType
     span
-  return $ MkStmtRead ident span
-
-data StmtWrite = MkStmtWrite Exp Span
+  return $ MkStmtRead lhs span
 
 mkStmtWrite
-  :: (MonadError Error m, SymbolTableReader m) => Exp -> Span -> m StmtWrite
+  :: (MonadError Error m, SymbolTableReader m) => RValue -> Span -> m StmtWrite
 mkStmtWrite exp span = do
-  dataType <- expDataType exp
+  dataType <- rValueDataType exp
   unless (dataType == Symbol.DataTypeInt) $ throwError $ Error.typeNotAllowed
     [Symbol.DataTypeInt]
     dataType
     span
   return $ MkStmtWrite exp span
 
-data StmtIf = MkStmtIf Exp [Stmt] Span
-
 mkStmtIf
   :: (MonadError Error m, SymbolTableReader m)
-  => Exp
+  => RValue
   -> [Stmt]
   -> Span
   -> m StmtIf
 mkStmtIf exp body span = do
-  dataType <- expDataType exp
+  dataType <- rValueDataType exp
   unless (dataType == Symbol.DataTypeBool) $ throwError $ Error.typeNotAllowed
     [Symbol.DataTypeBool]
     dataType
     span
   return $ MkStmtIf exp body span
 
-data StmtIfElse = MkStmtIfElse Exp [Stmt] [Stmt] Span
-
 mkStmtIfElse
   :: (MonadError Error m, SymbolTableReader m)
-  => Exp
+  => RValue
   -> [Stmt]
   -> [Stmt]
   -> Span
   -> m StmtIfElse
 mkStmtIfElse exp thenBody elseBody span = do
-  dataType <- expDataType exp
+  dataType <- rValueDataType exp
   unless (dataType == Symbol.DataTypeBool) $ throwError $ Error.typeNotAllowed
     [Symbol.DataTypeBool]
     dataType
     span
   return $ MkStmtIfElse exp thenBody elseBody span
 
-pushLoopStack :: (LoopStackReader m, LoopStackWriter m) => m ()
-pushLoopStack = getLoopStack >>= (putLoopStack . LoopStack.push)
-
-popLoopStack :: (LoopStackReader m, LoopStackWriter m) => m ()
-popLoopStack = getLoopStack >>= (putLoopStack . fromJust . LoopStack.pop)
-
-
-data StmtWhile = MkStmtWhile Exp [Stmt] Span
-
 mkStmtWhile
   :: (MonadError Error m, SymbolTableReader m)
-  => Exp
+  => RValue
   -> [Stmt]
   -> Span
   -> m StmtWhile
 mkStmtWhile exp body span = do
-  dataType <- expDataType exp
+  dataType <- rValueDataType exp
   unless (dataType == Symbol.DataTypeBool) $ throwError $ Error.typeNotAllowed
     [Symbol.DataTypeBool]
     dataType
     span
   return $ MkStmtWhile exp body span
 
-data StmtDoWhile = MkStmtDoWhile Exp [Stmt] Span
-
 mkStmtDoWhile
   :: (MonadError Error m, SymbolTableReader m)
-  => Exp
+  => RValue
   -> [Stmt]
   -> Span
   -> m StmtDoWhile
 mkStmtDoWhile exp body span = do
-  dataType <- expDataType exp
+  dataType <- rValueDataType exp
   unless (dataType == Symbol.DataTypeBool) $ throwError $ Error.typeNotAllowed
     [Symbol.DataTypeBool]
     dataType
     span
   return $ MkStmtDoWhile exp body span
-
-data StmtBreak = MkStmtBreak Span
 
 mkStmtBreak :: (MonadError Error m, LoopStackReader m) => Span -> m StmtBreak
 mkStmtBreak span = do
@@ -217,8 +233,6 @@ mkStmtBreak span = do
   _         <- LoopStack.pop loopStack |> throwOutOfLoop
   return $ MkStmtBreak span
   where throwOutOfLoop = liftEither . maybeToEither (Error.syntaxError span)
-
-data StmtContinue = MkStmtContinue Span
 
 mkStmtContinue
   :: (MonadError Error m, LoopStackReader m) => Span -> m StmtContinue
@@ -228,21 +242,47 @@ mkStmtContinue span = do
   return $ MkStmtContinue span
   where throwOutOfLoop = liftEither . maybeToEither (Error.syntaxError span)
 
-data OpArithmetic = OpAdd | OpSub | OpMul | OpDiv | OpMod
-
-data OpLogical = OpLT | OpGT | OpLE | OpGE | OpEQ | OpNE
-
-data Exp = ExpIdent ExpIdent | ExpPure ExpPure
-
-data ExpIdent = MkExpIdent Ident
-
-data ExpPure
-  = ExpNum Int Span
-  | ExpArithmetic Exp OpArithmetic Exp Span
-  | ExpLogical Exp OpLogical Exp Span
-
+mkArrayIndex
+  :: (MonadError Error m, SymbolTableReader m)
+  => Ident
+  -> RValue
+  -> Span
+  -> m ArrayIndex
+mkArrayIndex ident index span = do
+  dataType <- identDataType ident
+  unless
+      (case dataType of
+        DataTypeArray _ _ -> True
+        _                 -> False
+      )
+    $ throwError (Error.syntaxError span) -- TODO Better error
+  indexType <- rValueDataType index
+  unless (indexType == DataTypeInt) $ throwError (Error.syntaxError span) -- TODO Better error
+  return $ MkArrayIndex ident index span
 
 -- Helper Functions
+
+rValueDataType
+  :: (MonadError Error m, SymbolTableReader m) => RValue -> m DataType
+rValueDataType (LValue v  ) = lValueDataType v
+rValueDataType (Exp    exp) = return $ expDataType exp
+
+lValueDataType
+  :: (MonadError Error m, SymbolTableReader m) => LValue -> m DataType
+lValueDataType lValue = case lValue of
+  (LValueArrayIndex lValue) -> do
+    let (MkArrayIndex ident _ _) = lValue
+    dataType <- identDataType ident
+    let (DataTypeArray _ innerType) = dataType
+    return innerType
+  (LValueIdent ident) -> identDataType ident
+
+lValueDeclSpan :: (SymbolTableReader m) => LValue -> m Span
+lValueDeclSpan lValue =
+  let ident = case lValue of
+        LValueIdent      ident                    -> ident
+        LValueArrayIndex (MkArrayIndex ident _ _) -> ident
+  in  Symbol.declSpan <$> identSymbol ident
 
 identSymbol :: (SymbolTableReader m) => Ident -> m Symbol
 identSymbol ident = do
@@ -253,35 +293,32 @@ identDataType
   :: (MonadError Error m, SymbolTableReader m) => Ident -> m DataType
 identDataType ident = Symbol.dataType <$> identSymbol ident
 
-expDataType :: (MonadError Error m, SymbolTableReader m) => Exp -> m DataType
-expDataType (ExpIdent exp) = expIdentDataType exp
-expDataType (ExpPure  exp) = return $ expPureDataType exp
-
-expPureDataType :: ExpPure -> DataType
-expPureDataType exp = case exp of
+expDataType :: Exp -> DataType
+expDataType exp = case exp of
   ExpNum{}        -> DataTypeInt
   ExpArithmetic{} -> DataTypeInt
   ExpLogical{}    -> DataTypeBool
-
-expIdentDataType
-  :: (MonadError Error m, SymbolTableReader m) => ExpIdent -> m DataType
-expIdentDataType exp = identDataType ident where MkExpIdent ident = exp
 
 -- HasSpan instances
 
 instance HasSpan Ident where
   getSpan (MkIdent _ span) = span
 
+instance HasSpan RValue where
+  getSpan exp = case exp of
+    LValue v   -> getSpan v
+    Exp    exp -> getSpan exp
+
+instance HasSpan LValue where
+  getSpan exp = case exp of
+    LValueIdent      ident  -> getSpan ident
+    LValueArrayIndex aindex -> getSpan aindex
+
+instance HasSpan ArrayIndex where
+  getSpan exp = case exp of
+    MkArrayIndex _ _ span -> span
+
 instance HasSpan Exp where
-  getSpan exp = case exp of
-    ExpIdent exp -> getSpan exp
-    ExpPure  exp -> getSpan exp
-
-instance HasSpan ExpIdent where
-  getSpan exp = case exp of
-    MkExpIdent ident -> getSpan ident
-
-instance HasSpan ExpPure where
   getSpan exp = case exp of
     ExpNum _ span            -> span
     ExpArithmetic _ _ _ span -> span
@@ -302,3 +339,9 @@ class Monad m => LoopStackReader m where
 
 class Monad m => LoopStackWriter m where
   putLoopStack :: LoopStack -> m ()
+
+pushLoopStack :: (LoopStackReader m, LoopStackWriter m) => m ()
+pushLoopStack = getLoopStack >>= (putLoopStack . LoopStack.push)
+
+popLoopStack :: (LoopStackReader m, LoopStackWriter m) => m ()
+popLoopStack = getLoopStack >>= (putLoopStack . fromJust . LoopStack.pop)
