@@ -14,10 +14,16 @@ import           Span
 import           SymbolTable (SymbolTable)
 import qualified SymbolTable
 import Grammar
+import Symbol
 
 getIdentLocInStack :: Ident -> Compiler Int
 getIdentLocInStack ident = (4096 +)
   <$> gets (symbolLoc . fromJust . SymbolTable.lookup identName . symbolTable)
+  where MkIdent identName _ = ident
+
+getIdentDataType :: Ident -> Compiler DataType
+getIdentDataType ident = gets
+  (Symbol.dataType . fromJust . SymbolTable.lookup identName . symbolTable)
   where MkIdent identName _ = ident
 
 getFreeReg :: Compiler Reg

@@ -12,6 +12,7 @@ import Control.Monad.State.Strict (gets)
 import Data.List
 import Grammar
 import qualified SymbolTable
+import qualified Symbol
 
 parseProgram :: Program -> Compiler ()
 parseProgram program = do
@@ -36,16 +37,16 @@ execStmtDeclare _ = return ()
 
 execStmtAssign :: StmtAssign -> Compiler ()
 execStmtAssign stmt = do
-  let (MkStmtAssign ident exp _) = stmt
-  expReg <- parseExp exp
-  moveToIdent ident expReg
-  releaseReg expReg
+  let (MkStmtAssign lValue rValue _) = stmt
+  rhsReg <- calcRValue rValue
+  storeLValue lValue rhsReg
+  releaseReg rhsReg
   return ()
 
 execStmtRead :: StmtRead -> Compiler ()
 execStmtRead stmt = do
-  let MkStmtRead ident _ = stmt
-  loc <- getIdentLocInStack ident
+  let MkStmtRead lValue _ = stmt
+  loc <- getLValueLocInStack lValue
   t1  <- getFreeReg
   let code =
         [ XSM_MOV_Int t1 7 -- arg1: Call Number (Read = 7)
@@ -69,13 +70,13 @@ execStmtRead stmt = do
 execStmtWrite :: StmtWrite -> Compiler ()
 execStmtWrite stmt = do
   let MkStmtWrite exp _ = stmt
-  reg <- parseExp exp
+  reg <- calcRValue rValue
   printReg reg
 
 execStmtIf :: StmtIf -> Compiler ()
 execStmtIf stmt = do
-  let MkStmtIf expBool stmts _ = stmt
-  r        <- parseExp expBool
+  let MkStmtIf condition stmts _ = stmt
+  r        <- calcRValue condition
   endLabel <- getNewLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
   mapM_ execStmt stmts
@@ -83,8 +84,8 @@ execStmtIf stmt = do
 
 execStmtIfElse :: StmtIfElse -> Compiler ()
 execStmtIfElse stmt = do
-  let MkStmtIfElse expBool stmtsThen stmtsElse _ = stmt
-  r         <- parseExp expBool
+  let MkStmtIfElse condition stmtsThen stmtsElse _ = stmt
+  r         <- calcRValue condition
   elseLabel <- getNewLabel
   endLabel  <- getNewLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JZ r elseLabel]
@@ -111,7 +112,7 @@ execStmtWhile :: StmtWhile -> Compiler ()
 execStmtWhile stmt = do
   let MkStmtWhile expBool stmts _ = stmt
   loopBody $ \startLabel endLabel -> do
-    r <- parseExp expBool
+    r <- calcRValue rValueBool
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
     mapM_ execStmt stmts
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
@@ -121,7 +122,7 @@ execStmtDoWhile stmt = do
   let MkStmtDoWhile expBool stmts _ = stmt
   loopBody $ \startLabel endLabel -> do
     mapM_ execStmt stmts
-    r <- parseExp expBool
+    r <- calcRValue rValueBool
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
 
@@ -166,11 +167,35 @@ execALUInstr instr e1 e2 = do
   releaseReg r2
   return r1
 
+getLValueInReg lValue = case lValue of
+  LValueIdent ident -> do
+    reg      <- getIdentInReg ident
+    dataType <- getIdentDataType ident
+    return (reg, dataType)
+  LValueArrayIndex (MkArrayIndex lValue index _) -> do
+    (reg, dataType) <- getLValueInReg lValue
+    let (Symbol.DataTypeArray size innerType) = dataType
+    indexReg <- getRValueInReg index
+    let innerTypeSize = Symbol.getSize innerType
+    t <- getFreeReg
+    appendCode [XSM_MOV_Int t innerTypeSize]
+    appendCode [XSM_MUL indexReg t]
+    return ()
+
 getIdentInReg :: Ident -> Compiler Reg
 getIdentInReg ident = do
   loc <- getIdentLocInStack ident
   r   <- getFreeReg
   appendCode [XSM_MOV_DirSrc r loc]
+  return r
+
+getIdentIndexInReg :: Ident -> Reg -> Compiler Reg
+getIdentIndexInReg ident indexReg = do
+  loc <- getIdentLocInStack ident
+  r   <- getFreeReg
+  appendCode [XSM_MOV_Int r loc]
+  appendCode [XSM_ADD r indexReg]
+  appendCode [XSM_MOV_IndSrc r r]
   return r
 
 moveToIdent :: Ident -> Reg -> Compiler ()
@@ -179,14 +204,18 @@ moveToIdent ident reg = do
   appendCode [XSM_MOV_DirDst loc reg]
   return ()
 
-parseExp exp = case exp of
+parseExp :: Exp -> Compiler Reg
+calcRValue rValue = case exp of
   (ExpPure (ExpNum d _)) -> do
     r <- getFreeReg
     appendCode [XSM_MOV_Int r d]
     return r
-  (ExpPure  (ExpArithmetic e1 op e2 _)) -> execALUInstr (arithOpInstr op) e1 e2
-  (ExpPure  (ExpLogical    e1 op e2 _)) -> execALUInstr (logicOpInstr op) e1 e2
-  (ExpIdent (MkExpIdent ident        )) -> getIdentInReg ident
+  (ExpPure (ExpArithmetic e1 op e2 _)) -> execALUInstr (arithOpInstr op) e1 e2
+  (ExpPure (ExpLogical e1 op e2 _)) -> execALUInstr (logicOpInstr op) e1 e2
+  (ExpIdent (MkExpIdent ident)) -> getIdentInReg ident
+  (ExpArrayIndex (MkExpArrayIndex ident index _)) -> do
+    indexReg <- parseExp index
+    getIdentIndexInReg ident indexReg
 
 arithOpInstr :: OpArithmetic -> (Reg -> Reg -> XSMInstr)
 arithOpInstr op = case op of

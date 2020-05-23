@@ -48,7 +48,11 @@ initCompilerState symTab = CompilerState { freeRegs           = [R0 .. R19]
                                          }
  where
   (nextLoc, symTabExt) = SymbolTable.map genExt 0 symTab
-  genExt lastLoc _ = (lastLoc + 1, lastLoc)
+  genExt lastLoc symbol =
+    let size = Symbol.getSize (Symbol.dataType symbol)
+    in  ( lastLoc + size -- Next value
+        , lastLoc -- This value
+        )
 
 runCompiler :: Compiler a -> SymbolTable () -> Either Error a
 runCompiler compiler symtab = evalStateT compiler (initCompilerState symtab)

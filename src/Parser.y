@@ -38,6 +38,9 @@ import Control.Monad.Error
     '{'      {TokenBraceOpen _ }
     '}'      {TokenBraceClose _}
 
+    '['      {TokenSqBracketOpen _ }
+    ']'      {TokenSqBracketClose _}
+
     ';'      {TokenSemiColon _ }
     '='      {TokenEquals    _ }
 
@@ -103,41 +106,36 @@ StmtDeclare:
     DataType ident ';'     {% mkStmtDeclare (spanWVal $2) (spanWVal $1) (getSpanBwn $1 $3)}
 
 StmtAssign:
-    Ident '=' Exp ';'     {% mkStmtAssign $1 $3 (getSpanBwn $1 $4)}
+    Ident '=' Exp ';'      {% mkStmtAssign $1 $3 (getSpanBwn $1 $4)}
 
 StmtRead:
-    read '(' Ident ')' ';' 
-                          {% mkStmtRead $3 (getSpanBwn $1 $5)}
+    read '(' Ident ')' ';' {% mkStmtRead $3 (getSpanBwn $1 $5)}
 
 StmtWrite:
-    write '(' Exp ')' ';' {% mkStmtWrite $3 (getSpanBwn $1 $5)}
+    write '(' Exp ')' ';'  {% mkStmtWrite $3 (getSpanBwn $1 $5)}
 
 StmtIf:
       if '(' Exp ')' 
       then 
         Slist 
-      endif
-                          {% mkStmtIf $3 $6 (getSpanBwn $1 $7)}
+      endif                {% mkStmtIf $3 $6 (getSpanBwn $1 $7)}
 
     | if '(' Exp ')' '{' 
         Slist 
-     '}' 
-                          {% mkStmtIf $3 $6 (getSpanBwn $1 $7)}
+     '}'                   {% mkStmtIf $3 $6 (getSpanBwn $1 $7)}
                         
 StmtIfElse:
       if '(' Exp ')' then 
         Slist 
       else 
         Slist 
-      endif 
-                          {% mkStmtIfElse $3 $6 $8 (getSpanBwn $1 $9)}
+      endif                {% mkStmtIfElse $3 $6 $8 (getSpanBwn $1 $9)}
 
     | if '(' Exp ')' '{' 
         Slist 
       '}' else '{' 
         Slist 
-      '}' 
-                          {% mkStmtIfElse $3 $6 $10 (getSpanBwn $1 $11)}
+      '}'                  {% mkStmtIfElse $3 $6 $10 (getSpanBwn $1 $11)}
 
 StmtWhileEnter1:
       while '(' Exp ')' do {% pushLoopStack >> return $3 }
@@ -154,13 +152,11 @@ StmtWhileExit2:
 StmtWhile:
       StmtWhileEnter1
         Slist 
-      StmtWhileExit1 
-                          {% mkStmtWhile $1 $2 (getSpanBwn $1 $3)}
+      StmtWhileExit1      {% mkStmtWhile $1 $2 (getSpanBwn $1 $3)}
 
     | StmtWhileEnter2
         Slist 
-      StmtWhileExit2
-                          {% mkStmtWhile $1 $2 (getSpanBwn $1 $3)}
+      StmtWhileExit2      {% mkStmtWhile $1 $2 (getSpanBwn $1 $3)}
 
 StmtDoWhileEnter:
       do '{'              {% pushLoopStack >> return $1 }
@@ -171,8 +167,7 @@ StmtDoWhileExit:
 StmtDoWhile:
       StmtDoWhileEnter
         Slist 
-      StmtDoWhileExit
-                          {% mkStmtDoWhile $3 $2 (getSpanBwn $1 $3)}
+      StmtDoWhileExit     {% mkStmtDoWhile $3 $2 (getSpanBwn $1 $3)}
 
 StmtBreak:
       break ';'           {% mkStmtBreak (getSpanBwn $1 $2)}
@@ -180,29 +175,41 @@ StmtBreak:
 StmtContinue:
       continue ';'        {% mkStmtContinue (getSpanBwn $1 $2)}
 
+LValue:
+      Ident               {LValueIdent $1}
+    | ArrayIndex          {LValueArrayIndex $1}
+
+RValue:
+      LValue              {LValue $1}
+    | Exp                 {Exp $1}
+
 Ident:
-     ident                {% mkIdent (spanWVal $1) (getSpan $1)}
+     ident                 {% mkIdent (spanWVal $1) (getSpan $1)}
+
+ArrayIndex:
+     LValue '[' RValue ']' {% mkArrayIndex $1 $3 (getSpanBwn $1 $4)}
 
 Exp: 
-     number               {ExpPure $ ExpNum (spanWVal $1) (getSpan $1)}
-   | Ident                {ExpIdent $ MkExpIdent $1}
+     number               {ExpNum (spanWVal $1) (getSpan $1)}
    | '(' Exp ')'          {$2}
-   | Exp '+' Exp          {ExpPure $ ExpArithmetic $1 OpAdd $3 (getSpanBwn $1 $3)}
-   | Exp '-' Exp          {ExpPure $ ExpArithmetic $1 OpSub $3 (getSpanBwn $1 $3)}
-   | Exp '*' Exp          {ExpPure $ ExpArithmetic $1 OpMul $3 (getSpanBwn $1 $3)}
-   | Exp '/' Exp          {ExpPure $ ExpArithmetic $1 OpDiv $3 (getSpanBwn $1 $3)}
-   | Exp '%' Exp          {ExpPure $ ExpArithmetic $1 OpMod $3 (getSpanBwn $1 $3)}
-   | Exp '<' Exp          {ExpPure $ ExpLogical $1 OpLT  $3 (getSpanBwn $1 $3)}
-   | Exp '>' Exp          {ExpPure $ ExpLogical $1 OpGT  $3 (getSpanBwn $1 $3)}
-   | Exp '<=' Exp         {ExpPure $ ExpLogical $1 OpLE  $3 (getSpanBwn $1 $3)}
-   | Exp '>=' Exp         {ExpPure $ ExpLogical $1 OpGE  $3 (getSpanBwn $1 $3)}
-   | Exp '==' Exp         {ExpPure $ ExpLogical $1 OpEQ  $3 (getSpanBwn $1 $3)}
-   | Exp '!=' Exp         {ExpPure $ ExpLogical $1 OpNE  $3 (getSpanBwn $1 $3)}
+   | Exp '+' Exp          {ExpArithmetic $1 OpAdd $3 (getSpanBwn $1 $3)}
+   | Exp '-' Exp          {ExpArithmetic $1 OpSub $3 (getSpanBwn $1 $3)}
+   | Exp '*' Exp          {ExpArithmetic $1 OpMul $3 (getSpanBwn $1 $3)}
+   | Exp '/' Exp          {ExpArithmetic $1 OpDiv $3 (getSpanBwn $1 $3)}
+   | Exp '%' Exp          {ExpArithmetic $1 OpMod $3 (getSpanBwn $1 $3)}
+   | Exp '<' Exp          {ExpLogical $1 OpLT  $3 (getSpanBwn $1 $3)}
+   | Exp '>' Exp          {ExpLogical $1 OpGT  $3 (getSpanBwn $1 $3)}
+   | Exp '<=' Exp         {ExpLogical $1 OpLE  $3 (getSpanBwn $1 $3)}
+   | Exp '>=' Exp         {ExpLogical $1 OpGE  $3 (getSpanBwn $1 $3)}
+   | Exp '==' Exp         {ExpLogical $1 OpEQ  $3 (getSpanBwn $1 $3)}
+   | Exp '!=' Exp         {ExpLogical $1 OpNE  $3 (getSpanBwn $1 $3)}
+
+ExpArrayIndex:
 
 DataType:
-    int                   {SpanW DataTypeInt (getSpan $1)}
-  | bool                  {SpanW DataTypeBool (getSpan $1)}
-
+    int                     {SpanW DataTypeInt (getSpan $1)}
+  | bool                    {SpanW DataTypeBool (getSpan $1)}
+  | DataType '[' number ']' {SpanW (dataTypeReverseAddDim (spanWVal $1) (spanWVal $3)) (getSpanBwn $1 $4)}
 
 {
 

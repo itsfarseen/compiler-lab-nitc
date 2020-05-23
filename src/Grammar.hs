@@ -93,7 +93,7 @@ data LValue = LValueIdent Ident | LValueArrayIndex ArrayIndex
 data RValue = LValue LValue | Exp Exp
 
 data Ident = MkIdent String Span
-data ArrayIndex = MkArrayIndex Ident RValue Span
+data ArrayIndex = MkArrayIndex LValue RValue Span
 
 data Exp
   = ExpNum Int Span
@@ -244,12 +244,12 @@ mkStmtContinue span = do
 
 mkArrayIndex
   :: (MonadError Error m, SymbolTableReader m)
-  => Ident
+  => LValue
   -> RValue
   -> Span
   -> m ArrayIndex
-mkArrayIndex ident index span = do
-  dataType <- identDataType ident
+mkArrayIndex lValue index span = do
+  dataType <- lValueDataType lValue
   unless
       (case dataType of
         DataTypeArray _ _ -> True
@@ -258,7 +258,7 @@ mkArrayIndex ident index span = do
     $ throwError (Error.syntaxError span) -- TODO Better error
   indexType <- rValueDataType index
   unless (indexType == DataTypeInt) $ throwError (Error.syntaxError span) -- TODO Better error
-  return $ MkArrayIndex ident index span
+  return $ MkArrayIndex lValue index span
 
 -- Helper Functions
 
@@ -271,18 +271,16 @@ lValueDataType
   :: (MonadError Error m, SymbolTableReader m) => LValue -> m DataType
 lValueDataType lValue = case lValue of
   (LValueArrayIndex lValue) -> do
-    let (MkArrayIndex ident _ _) = lValue
-    dataType <- identDataType ident
+    let (MkArrayIndex lValueInner _ _) = lValue
+    dataType <- lValueDataType lValueInner
     let (DataTypeArray _ innerType) = dataType
     return innerType
   (LValueIdent ident) -> identDataType ident
 
 lValueDeclSpan :: (SymbolTableReader m) => LValue -> m Span
-lValueDeclSpan lValue =
-  let ident = case lValue of
-        LValueIdent      ident                    -> ident
-        LValueArrayIndex (MkArrayIndex ident _ _) -> ident
-  in  Symbol.declSpan <$> identSymbol ident
+lValueDeclSpan lValue = case lValue of
+  LValueIdent ident -> Symbol.declSpan <$> identSymbol ident
+  LValueArrayIndex (MkArrayIndex lValueInner _ _) -> lValueDeclSpan lValueInner
 
 identSymbol :: (SymbolTableReader m) => Ident -> m Symbol
 identSymbol ident = do

@@ -18,9 +18,22 @@ data DataType
   deriving Eq
 
 instance Show DataType where
-  show DataTypeInt                = "Int"
-  show DataTypeBool               = "Bool"
-  show (DataTypeArray size inner) = show inner ++ "[" ++ show size ++ "]"
+  show dataType =
+    let (s, dims) = dataTypeDims dataType
+    in  s ++ concatMap (\n -> "[" ++ show n ++ "]") dims
+
+dataTypeDims dataType = case dataType of
+  DataTypeInt  -> ("int", [])
+  DataTypeBool -> ("bool", [])
+  DataTypeArray dim inner ->
+    let (s, dims) = dataTypeDims inner in (s, dim : dims)
+
+dataTypeReverseAddDim :: DataType -> Int -> DataType
+dataTypeReverseAddDim dataType size = case dataType of
+  DataTypeInt  -> DataTypeArray size dataType
+  DataTypeBool -> DataTypeArray size dataType
+  DataTypeArray size' inner ->
+    DataTypeArray size' (dataTypeReverseAddDim inner size)
 
 
 getSize :: DataType -> Int
