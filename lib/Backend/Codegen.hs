@@ -37,24 +37,25 @@ execStmtDeclare _ = return ()
 
 execStmtAssign :: StmtAssign -> Compiler ()
 execStmtAssign stmt = do
-  let (MkStmtAssign lValue rValue _) = stmt
-  rhsReg <- calcRValue rValue
-  storeLValue lValue rhsReg
+  let (MkStmtAssign lhs rhs _) = stmt
+  rhsReg    <- getRValueInReg rhs
+  lhsLocReg <- getLValueLocInReg lhs
+  appendCode [XSM_MOV_IndDst lhsLocReg rhsReg]
+  releaseReg lhsLocReg
   releaseReg rhsReg
   return ()
 
 execStmtRead :: StmtRead -> Compiler ()
 execStmtRead stmt = do
   let MkStmtRead lValue _ = stmt
-  loc <- getLValueLocInStack lValue
-  t1  <- getFreeReg
+  lValueLocReg <- getLValueLocInReg lValue
+  t1           <- getFreeReg
   let code =
         [ XSM_MOV_Int t1 7 -- arg1: Call Number (Read = 7)
         , XSM_PUSH t1
         , XSM_MOV_Int t1 (-1) -- arg2: File Pointer (Stdin = -1)
         , XSM_PUSH t1
-        , XSM_MOV_Int t1 loc -- arg3: Buffer loc
-        , XSM_PUSH t1
+        , XSM_PUSH lValueLocReg -- arg3: Buffer loc
         , XSM_PUSH R0 -- arg4: unused
         , XSM_PUSH R0 -- arg5: unused
         , XSM_INT 6 -- Int 6 = Read System Call
@@ -64,36 +65,40 @@ execStmtRead stmt = do
         , XSM_POP t1 -- arg2
         , XSM_POP t1 -- arg1
         ]
-  releaseReg t1
   appendCode code
+  releaseReg t1
+  releaseReg lValueLocReg
 
 execStmtWrite :: StmtWrite -> Compiler ()
 execStmtWrite stmt = do
-  let MkStmtWrite exp _ = stmt
-  reg <- calcRValue rValue
+  let MkStmtWrite rValue _ = stmt
+  reg <- getRValueInReg rValue
   printReg reg
+  releaseReg reg
 
 execStmtIf :: StmtIf -> Compiler ()
 execStmtIf stmt = do
   let MkStmtIf condition stmts _ = stmt
-  r        <- calcRValue condition
+  condReg  <- getRValueInReg condition
   endLabel <- getNewLabel
-  appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
+  appendCode [XSM_UTJ $ XSM_UTJ_JZ condReg endLabel]
   mapM_ execStmt stmts
   installLabel endLabel
+  releaseReg condReg
 
 execStmtIfElse :: StmtIfElse -> Compiler ()
 execStmtIfElse stmt = do
   let MkStmtIfElse condition stmtsThen stmtsElse _ = stmt
-  r         <- calcRValue condition
+  condReg   <- getRValueInReg condition
   elseLabel <- getNewLabel
   endLabel  <- getNewLabel
-  appendCode [XSM_UTJ $ XSM_UTJ_JZ r elseLabel]
+  appendCode [XSM_UTJ $ XSM_UTJ_JZ condReg elseLabel]
   mapM_ execStmt stmtsThen
   appendCode [XSM_UTJ $ XSM_UTJ_JMP endLabel]
   installLabel elseLabel
   mapM_ execStmt stmtsElse
   installLabel endLabel
+  releaseReg condReg
 
 loopBody :: (String -> String -> Compiler ()) -> Compiler ()
 loopBody body = do
@@ -110,21 +115,23 @@ loopBody body = do
 
 execStmtWhile :: StmtWhile -> Compiler ()
 execStmtWhile stmt = do
-  let MkStmtWhile expBool stmts _ = stmt
+  let MkStmtWhile condition stmts _ = stmt
+  r <- getRValueInReg condition
   loopBody $ \startLabel endLabel -> do
-    r <- calcRValue rValueBool
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
     mapM_ execStmt stmts
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
+  releaseReg r
 
 execStmtDoWhile :: StmtDoWhile -> Compiler ()
 execStmtDoWhile stmt = do
-  let MkStmtDoWhile expBool stmts _ = stmt
+  let MkStmtDoWhile condition stmts _ = stmt
+  r <- getRValueInReg condition
   loopBody $ \startLabel endLabel -> do
     mapM_ execStmt stmts
-    r <- calcRValue rValueBool
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
+  releaseReg r
 
 execStmtBreak :: StmtBreak -> Compiler ()
 execStmtBreak _ = do
@@ -154,70 +161,69 @@ printReg reg = do
         , XSM_POP t1 -- arg2
         , XSM_POP t1 -- arg1
         ]
-  releaseReg t1
   appendCode code
+  releaseReg t1
+
+getLValueLocInReg :: LValue -> Compiler Reg
+getLValueLocInReg lValue = do
+  let ident = Grammar.lValueIdent lValue
+  dataType <- getIdentDataType ident
+  (reg, _) <- getLValueLocInReg' dataType lValue
+  return reg
+ where
+  getLValueLocInReg' :: Symbol.DataType -> LValue -> Compiler (Reg, Int)
+  getLValueLocInReg' dataType lValue = case lValue of
+    LValueIdent ident -> do
+      dataType' <- getIdentDataType ident
+      when (dataType /= dataType')
+        $ error "Program bug: data type mismatch in getLValueInReg"
+      case dataType of
+        Symbol.DataTypeArray{} ->
+          error
+            $  "Program bug: Can not getLValueInReg, dataType is Array"
+            ++ (show dataType)
+        _ -> return ()
+      reg <- getFreeReg
+      loc <- getIdentLocInStack ident
+      appendCode [XSM_MOV_Int reg loc]
+      return (reg, Symbol.getSize dataType)
+    LValueArrayIndex index lValue _ -> case dataType of
+      Symbol.DataTypeArray dim innerType -> do
+        (reg, innerSize) <- getLValueLocInReg' innerType lValue
+        indexReg         <- getRValueInReg index
+        t                <- getFreeReg
+        appendCode [XSM_MOV_Int t innerSize]
+        appendCode [XSM_MUL indexReg t]
+        appendCode [XSM_ADD reg indexReg]
+        releaseReg t
+        releaseReg indexReg
+        return (reg, innerSize * dim)
+      _ -> error "Program Bug: Dereferencing non-Array type"
+
+getRValueInReg :: RValue -> Compiler Reg
+getRValueInReg rValue = case rValue of
+  (Exp (ExpNum i _)) -> do
+    reg <- getFreeReg
+    appendCode [XSM_MOV_Int reg i]
+    return reg
+  (Exp    (ExpArithmetic e1 op e2 _)) -> execALUInstr (arithOpInstr op) e1 e2
+  (Exp    (ExpLogical    e1 op e2 _)) -> execALUInstr (logicOpInstr op) e1 e2
+  (LValue lValue                    ) -> do
+    reg <- getLValueLocInReg lValue
+    appendCode [XSM_MOV_IndSrc reg reg]
+    return reg
 
 type ALUInstr = (Reg -> Reg -> XSMInstr)
 
-execALUInstr :: ALUInstr -> Exp -> Exp -> Compiler Reg
+execALUInstr :: ALUInstr -> RValue -> RValue -> Compiler Reg
 execALUInstr instr e1 e2 = do
-  r1 <- parseExp e1
-  r2 <- parseExp e2
+  r1 <- getRValueInReg e1
+  r2 <- getRValueInReg e2
   appendCode [instr r1 r2]
   releaseReg r2
   return r1
 
-getLValueInReg lValue = case lValue of
-  LValueIdent ident -> do
-    reg      <- getIdentInReg ident
-    dataType <- getIdentDataType ident
-    return (reg, dataType)
-  LValueArrayIndex (MkArrayIndex lValue index _) -> do
-    (reg, dataType) <- getLValueInReg lValue
-    let (Symbol.DataTypeArray size innerType) = dataType
-    indexReg <- getRValueInReg index
-    let innerTypeSize = Symbol.getSize innerType
-    t <- getFreeReg
-    appendCode [XSM_MOV_Int t innerTypeSize]
-    appendCode [XSM_MUL indexReg t]
-    return ()
-
-getIdentInReg :: Ident -> Compiler Reg
-getIdentInReg ident = do
-  loc <- getIdentLocInStack ident
-  r   <- getFreeReg
-  appendCode [XSM_MOV_DirSrc r loc]
-  return r
-
-getIdentIndexInReg :: Ident -> Reg -> Compiler Reg
-getIdentIndexInReg ident indexReg = do
-  loc <- getIdentLocInStack ident
-  r   <- getFreeReg
-  appendCode [XSM_MOV_Int r loc]
-  appendCode [XSM_ADD r indexReg]
-  appendCode [XSM_MOV_IndSrc r r]
-  return r
-
-moveToIdent :: Ident -> Reg -> Compiler ()
-moveToIdent ident reg = do
-  loc <- getIdentLocInStack ident
-  appendCode [XSM_MOV_DirDst loc reg]
-  return ()
-
-parseExp :: Exp -> Compiler Reg
-calcRValue rValue = case exp of
-  (ExpPure (ExpNum d _)) -> do
-    r <- getFreeReg
-    appendCode [XSM_MOV_Int r d]
-    return r
-  (ExpPure (ExpArithmetic e1 op e2 _)) -> execALUInstr (arithOpInstr op) e1 e2
-  (ExpPure (ExpLogical e1 op e2 _)) -> execALUInstr (logicOpInstr op) e1 e2
-  (ExpIdent (MkExpIdent ident)) -> getIdentInReg ident
-  (ExpArrayIndex (MkExpArrayIndex ident index _)) -> do
-    indexReg <- parseExp index
-    getIdentIndexInReg ident indexReg
-
-arithOpInstr :: OpArithmetic -> (Reg -> Reg -> XSMInstr)
+arithOpInstr :: OpArithmetic -> ALUInstr
 arithOpInstr op = case op of
   OpAdd -> XSM_ADD
   OpSub -> XSM_SUB
@@ -225,7 +231,7 @@ arithOpInstr op = case op of
   OpDiv -> XSM_DIV
   OpMod -> XSM_MOD
 
-logicOpInstr :: OpLogical -> (Reg -> Reg -> XSMInstr)
+logicOpInstr :: OpLogical -> ALUInstr
 logicOpInstr op = case op of
   OpLT -> XSM_LT
   OpGT -> XSM_GT

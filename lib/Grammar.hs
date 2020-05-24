@@ -18,7 +18,6 @@ module Grammar
   , LValue(..)
   , RValue(..)
   , Ident(..)
-  , ArrayIndex(..)
   , Exp(..)
   , OpArithmetic(..)
   , OpLogical(..)
@@ -41,6 +40,7 @@ module Grammar
   , LoopStackWriter(..)
   , pushLoopStack
   , popLoopStack
+  , lValueIdent
   ) where
 
 
@@ -61,7 +61,6 @@ import Data.Bifunctor (first)
 import Data.Either.Extra (maybeToEither)
 import Data.Maybe (fromJust, isJust)
 
-type Symbol = Symbol.Symbol ()
 type SymbolTable = SymbolTable.SymbolTable ()
 
 newtype Program = Program { stmts :: [Stmt] }
@@ -89,11 +88,10 @@ data StmtDoWhile = MkStmtDoWhile RValue [Stmt] Span
 data StmtBreak = MkStmtBreak Span
 data StmtContinue = MkStmtContinue Span
 
-data LValue = LValueIdent Ident | LValueArrayIndex ArrayIndex
+data LValue = LValueIdent Ident | LValueArrayIndex RValue LValue Span
 data RValue = LValue LValue | Exp Exp
 
 data Ident = MkIdent String Span
-data ArrayIndex = MkArrayIndex LValue RValue Span
 
 data Exp
   = ExpNum Int Span
@@ -242,12 +240,13 @@ mkStmtContinue span = do
   return $ MkStmtContinue span
   where throwOutOfLoop = liftEither . maybeToEither (Error.syntaxError span)
 
+-- TODO - !!! Fix erroring out on index
 mkArrayIndex
   :: (MonadError Error m, SymbolTableReader m)
   => LValue
   -> RValue
   -> Span
-  -> m ArrayIndex
+  -> m LValue
 mkArrayIndex lValue index span = do
   dataType <- lValueDataType lValue
   unless
@@ -258,9 +257,13 @@ mkArrayIndex lValue index span = do
     $ throwError (Error.syntaxError span) -- TODO Better error
   indexType <- rValueDataType index
   unless (indexType == DataTypeInt) $ throwError (Error.syntaxError span) -- TODO Better error
-  return $ MkArrayIndex lValue index span
+  return $ LValueArrayIndex index lValue span
 
 -- Helper Functions
+
+lValueIdent :: LValue -> Ident
+lValueIdent (LValueIdent ident          ) = ident
+lValueIdent (LValueArrayIndex _ lValue _) = lValueIdent lValue
 
 rValueDataType
   :: (MonadError Error m, SymbolTableReader m) => RValue -> m DataType
@@ -270,26 +273,19 @@ rValueDataType (Exp    exp) = return $ expDataType exp
 lValueDataType
   :: (MonadError Error m, SymbolTableReader m) => LValue -> m DataType
 lValueDataType lValue = case lValue of
-  (LValueArrayIndex lValue) -> do
-    let (MkArrayIndex lValueInner _ _) = lValue
+  (LValueArrayIndex _ lValueInner _) -> do
     dataType <- lValueDataType lValueInner
     let (DataTypeArray _ innerType) = dataType
     return innerType
-  (LValueIdent ident) -> identDataType ident
+  (LValueIdent (MkIdent identName _)) ->
+    Symbol.dataType . fromJust . SymbolTable.lookup identName <$> getSymtab
 
 lValueDeclSpan :: (SymbolTableReader m) => LValue -> m Span
 lValueDeclSpan lValue = case lValue of
-  LValueIdent ident -> Symbol.declSpan <$> identSymbol ident
-  LValueArrayIndex (MkArrayIndex lValueInner _ _) -> lValueDeclSpan lValueInner
+  LValueIdent (MkIdent identName _) ->
+    Symbol.declSpan . fromJust . SymbolTable.lookup identName <$> getSymtab
+  LValueArrayIndex _ lValueInner _ -> lValueDeclSpan lValueInner
 
-identSymbol :: (SymbolTableReader m) => Ident -> m Symbol
-identSymbol ident = do
-  let (MkIdent identName _) = ident
-  fromJust . SymbolTable.lookup identName <$> getSymtab
-
-identDataType
-  :: (MonadError Error m, SymbolTableReader m) => Ident -> m DataType
-identDataType ident = Symbol.dataType <$> identSymbol ident
 
 expDataType :: Exp -> DataType
 expDataType exp = case exp of
@@ -299,9 +295,6 @@ expDataType exp = case exp of
 
 -- HasSpan instances
 
-instance HasSpan Ident where
-  getSpan (MkIdent _ span) = span
-
 instance HasSpan RValue where
   getSpan exp = case exp of
     LValue v   -> getSpan v
@@ -309,12 +302,8 @@ instance HasSpan RValue where
 
 instance HasSpan LValue where
   getSpan exp = case exp of
-    LValueIdent      ident  -> getSpan ident
-    LValueArrayIndex aindex -> getSpan aindex
-
-instance HasSpan ArrayIndex where
-  getSpan exp = case exp of
-    MkArrayIndex _ _ span -> span
+    LValueIdent (MkIdent _ span) -> span
+    LValueArrayIndex _ _ span    -> span
 
 instance HasSpan Exp where
   getSpan exp = case exp of

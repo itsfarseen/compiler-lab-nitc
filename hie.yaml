@@ -1,2 +1,8 @@
 cradle:
   stack:
+    - path: "./lib"
+      component: "CompilerLab:lib"
+    - path: "./src"
+      component: "CompilerLab:exe:CompilerLab"
+    - path: "./tests"
+      component: "CompilerLab:test:test"

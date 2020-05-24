@@ -106,45 +106,45 @@ StmtDeclare:
     DataType ident ';'     {% mkStmtDeclare (spanWVal $2) (spanWVal $1) (getSpanBwn $1 $3)}
 
 StmtAssign:
-    Ident '=' Exp ';'      {% mkStmtAssign $1 $3 (getSpanBwn $1 $4)}
+    LValue '=' RValue ';'      {% mkStmtAssign $1 $3 (getSpanBwn $1 $4)}
 
 StmtRead:
-    read '(' Ident ')' ';' {% mkStmtRead $3 (getSpanBwn $1 $5)}
+    read '(' LValue ')' ';' {% mkStmtRead $3 (getSpanBwn $1 $5)}
 
 StmtWrite:
-    write '(' Exp ')' ';'  {% mkStmtWrite $3 (getSpanBwn $1 $5)}
+    write '(' RValue ')' ';'  {% mkStmtWrite $3 (getSpanBwn $1 $5)}
 
 StmtIf:
-      if '(' Exp ')' 
+      if '(' RValue ')' 
       then 
         Slist 
       endif                {% mkStmtIf $3 $6 (getSpanBwn $1 $7)}
 
-    | if '(' Exp ')' '{' 
+    | if '(' RValue ')' '{' 
         Slist 
      '}'                   {% mkStmtIf $3 $6 (getSpanBwn $1 $7)}
                         
 StmtIfElse:
-      if '(' Exp ')' then 
+      if '(' RValue ')' then 
         Slist 
       else 
         Slist 
       endif                {% mkStmtIfElse $3 $6 $8 (getSpanBwn $1 $9)}
 
-    | if '(' Exp ')' '{' 
+    | if '(' RValue ')' '{' 
         Slist 
       '}' else '{' 
         Slist 
       '}'                  {% mkStmtIfElse $3 $6 $10 (getSpanBwn $1 $11)}
 
 StmtWhileEnter1:
-      while '(' Exp ')' do {% pushLoopStack >> return $3 }
+      while '(' RValue ')' do {% pushLoopStack >> return $3 }
 
 StmtWhileExit1:
       endwhile             {% popLoopStack >> return $1 }
 
 StmtWhileEnter2:
-      while '(' Exp ')' '{' {% pushLoopStack >> return $3 }
+      while '(' RValue ')' '{' {% pushLoopStack >> return $3 }
 
 StmtWhileExit2:
       '}'                   {% popLoopStack >> return $1 }
@@ -162,7 +162,7 @@ StmtDoWhileEnter:
       do '{'              {% pushLoopStack >> return $1 }
 
 StmtDoWhileExit:
-      '}' while '(' Exp ')' {% popLoopStack >> return $4 }
+      '}' while '(' RValue ')' {% popLoopStack >> return $4 }
 
 StmtDoWhile:
       StmtDoWhileEnter
@@ -192,24 +192,24 @@ ArrayIndex:
 Exp: 
      number               {ExpNum (spanWVal $1) (getSpan $1)}
    | '(' Exp ')'          {$2}
-   | Exp '+' Exp          {ExpArithmetic $1 OpAdd $3 (getSpanBwn $1 $3)}
-   | Exp '-' Exp          {ExpArithmetic $1 OpSub $3 (getSpanBwn $1 $3)}
-   | Exp '*' Exp          {ExpArithmetic $1 OpMul $3 (getSpanBwn $1 $3)}
-   | Exp '/' Exp          {ExpArithmetic $1 OpDiv $3 (getSpanBwn $1 $3)}
-   | Exp '%' Exp          {ExpArithmetic $1 OpMod $3 (getSpanBwn $1 $3)}
-   | Exp '<' Exp          {ExpLogical $1 OpLT  $3 (getSpanBwn $1 $3)}
-   | Exp '>' Exp          {ExpLogical $1 OpGT  $3 (getSpanBwn $1 $3)}
-   | Exp '<=' Exp         {ExpLogical $1 OpLE  $3 (getSpanBwn $1 $3)}
-   | Exp '>=' Exp         {ExpLogical $1 OpGE  $3 (getSpanBwn $1 $3)}
-   | Exp '==' Exp         {ExpLogical $1 OpEQ  $3 (getSpanBwn $1 $3)}
-   | Exp '!=' Exp         {ExpLogical $1 OpNE  $3 (getSpanBwn $1 $3)}
+   | RValue '+' RValue          {ExpArithmetic $1 OpAdd $3 (getSpanBwn $1 $3)}
+   | RValue '-' RValue          {ExpArithmetic $1 OpSub $3 (getSpanBwn $1 $3)}
+   | RValue '*' RValue          {ExpArithmetic $1 OpMul $3 (getSpanBwn $1 $3)}
+   | RValue '/' RValue          {ExpArithmetic $1 OpDiv $3 (getSpanBwn $1 $3)}
+   | RValue '%' RValue          {ExpArithmetic $1 OpMod $3 (getSpanBwn $1 $3)}
+   | RValue '<' RValue          {ExpLogical $1 OpLT  $3 (getSpanBwn $1 $3)}
+   | RValue '>' RValue          {ExpLogical $1 OpGT  $3 (getSpanBwn $1 $3)}
+   | RValue '<=' RValue         {ExpLogical $1 OpLE  $3 (getSpanBwn $1 $3)}
+   | RValue '>=' RValue         {ExpLogical $1 OpGE  $3 (getSpanBwn $1 $3)}
+   | RValue '==' RValue         {ExpLogical $1 OpEQ  $3 (getSpanBwn $1 $3)}
+   | RValue '!=' RValue         {ExpLogical $1 OpNE  $3 (getSpanBwn $1 $3)}
 
-ExpArrayIndex:
+-- ExpArrayIndex:
 
 DataType:
     int                     {SpanW DataTypeInt (getSpan $1)}
   | bool                    {SpanW DataTypeBool (getSpan $1)}
-  | DataType '[' number ']' {SpanW (dataTypeReverseAddDim (spanWVal $1) (spanWVal $3)) (getSpanBwn $1 $4)}
+--  | DataType '[' number ']' {SpanW (dataTypeReverseAddDim (spanWVal $1) (spanWVal $3)) (getSpanBwn $1 $4)}
 
 {
 
