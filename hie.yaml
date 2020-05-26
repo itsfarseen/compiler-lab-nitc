@@ -1,8 +1,11 @@
 cradle:
-  stack:
+  multi:
     - path: "./lib"
-      component: "CompilerLab:lib"
+      config: { cradle: { stack: { component: "CompilerLab:lib" } } }
     - path: "./src"
-      component: "CompilerLab:exe:CompilerLab"
+      config:
+        { cradle: { stack: { component: "CompilerLab:exe:CompilerLab" } } }
     - path: "./tests"
-      component: "CompilerLab:test:test"
+      config: { cradle: { stack: { component: "CompilerLab:test:test" } } }
+    - path: "./Setup.hs"
+      config: { cradle: { none: ; } }
