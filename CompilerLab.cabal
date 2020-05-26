@@ -36,6 +36,7 @@ library
       , Backend.CompilerUtils
       , Backend.CodeUtils
       , Backend.Main
+      , Backend.Simulator
   hs-source-dirs:
       lib
   -- ghc-options: -threaded -rtsopts -with-rtsopts=-N
@@ -81,6 +82,7 @@ test-suite test
       base
     , CompilerLab
     , extra
+    , flow
     , tasty
     , tasty-hunit
     , tasty-th

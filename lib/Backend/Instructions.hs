@@ -33,6 +33,7 @@ data XSMInstr
   | XSM_JMP Int
   | XSM_INT Int
   | XSM_UTJ UntranslatedJump
+  deriving (Show)
 
 type Label = String
 

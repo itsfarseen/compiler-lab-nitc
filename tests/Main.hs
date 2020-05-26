@@ -10,51 +10,61 @@ import SymbolTable (SymbolTable)
 import qualified Backend.Compiler as Compiler
 import qualified SymbolTable
 import qualified Backend.Codegen as Codegen
+import qualified Backend.Simulator as Simulator
+import Backend.Instructions
+import Backend.Reg
 import Data.Either.Extra
 import Grammar
+import Flow
 
 main :: IO ()
 main = $(defaultMainGenerator)
 
-{-
-    int foo[10][7]
-    foo[3][4]   - type = int            - size = 1
-    foo[3]      - type = int[7]         - size = 7
-    foo         - type = int[10][7]     - size = 10*7
-
--}
-
-makeSymTab :: [Symbol ()] -> SymbolTable ()
-makeSymTab symbols =
-  let symtab = SymbolTable.initSymbolTable
-  in  foldl (\symtab sym -> fromRight' $ SymbolTable.insert sym symtab)
-            symtab
-            symbols
-
-case_foo :: Assertion
-case_foo =
-  fromRight'
-    $ flip
-        Compiler.runCompiler
-        (makeSymTab
-          [ Symbol
-              { name     = "foo"
-              , dataType = DataTypeArray 5  -- int foo[5][4][10]
-                           $ DataTypeArray 4
-                           $ DataTypeArray 10 DataTypeInt
-              , declSpan = undefined
-              , ext      = ()
-              }
+case_simulator :: Assertion
+case_simulator =
+  let machine =
+          Simulator.init code
+            |> Simulator.setMemory 4096 123
+            |> Simulator.setMemory 4097 4098
+            |> Simulator.setMemory 4098 234
+            |> Simulator.run
+      code =
+          [ XSM_MOV_Int SP 4095
+          , XSM_ADD_I SP 3
+          , XSM_MOV_Int R1 345
+          , XSM_PUSH R1          -- setMemory 4099 345 
+          , XSM_MOV_DirSrc R1 4096
+          , XSM_MOV_DirSrc R2 4097
+          , XSM_MOV_IndSrc R2 R2
+          , XSM_POP R3
           ]
-        )
-    $ do
-        let ident = LValueIdent "foo" undefined
-        -- foo[2][3][7]
-        let arrayIdx = LValueArrayIndex
-              (Exp $ ExpNum 2)
-              (LValueArrayIndex
-                (Exp $ ExpNum 3)
-                (LValueArrayIndex (Exp $ ExpNum 7) identLValue)
-              )
-        undefined
+  in  do
+        Simulator.getRegVal SP machine @?= 4098
+        Simulator.getMemory 4096 machine @?= 123
+        Simulator.getMemory 4097 machine @?= 4098
+        Simulator.getMemory 4098 machine @?= 234
+        Simulator.getRegVal R1 machine @?= 123
+        Simulator.getRegVal R2 machine @?= 234
+        Simulator.getRegVal R3 machine @?= 345
 
+-- brittany-disable-next-binding
+case_simulator_loop :: Assertion
+case_simulator_loop =
+  let machine = Simulator.init code |> Simulator.run
+      code =
+          [ {-2056-} XSM_MOV_Int R1 10 -- n    
+          , {-2058-} XSM_MOV_Int R2 1  -- i
+          , {-2060-} XSM_MOV_Int R3 0  -- s
+          , {-2062-} XSM_MOV_R R4 R2
+          , {-2064-} XSM_LE R4 R1
+          , {-2066-} XSM_JZ R4 2078
+          , {-2068-} XSM_MOV_R R4 R2
+          , {-2070-} XSM_MUL R4 R4 -- i*i
+          , {-2072-} XSM_ADD R3 R4 -- s += i*i
+          , {-2074-} XSM_ADD_I R2 1 -- i += 1
+          , {-2076-} XSM_JMP 2062
+          ]
+  in  do
+        Simulator.getRegVal R1 machine @?= 10
+        Simulator.getRegVal R2 machine @?= 11
+        Simulator.getRegVal R3 machine @?= (sum $ map (\x -> x * x) [1 .. 10])
