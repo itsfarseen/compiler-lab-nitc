@@ -1,15 +1,16 @@
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Frontend where
 
 import Codec.Binary.UTF8.String as UString
 import Control.Monad.State.Strict
 import Control.Monad.Except
+import qualified Data.HashMap.Strict as HM
 import Data.Word
 import Error (Error)
 import Grammar
-import SymbolTable
 import LoopStack
 
 data AlexInput = AlexInput {alexInputStr :: [Word8], alexTokenOffset :: Int }
@@ -17,7 +18,7 @@ data AlexInput = AlexInput {alexInputStr :: [Word8], alexTokenOffset :: Int }
 data FrontendData =
   FrontendData
     { alexInput :: AlexInput
-    , symbolTable :: SymbolTable ()
+    , symbolTable :: HM.HashMap String Symbol
     , loopStack :: LoopStack
     }
 
@@ -39,7 +40,7 @@ initData sourceCode =
                             , alexTokenOffset = 0
                             }
   in  FrontendData { alexInput
-                   , symbolTable = SymbolTable.initSymbolTable
+                   , symbolTable = HM.empty
                    , loopStack   = LoopStack.init
                    }
 
@@ -48,14 +49,20 @@ runFrontend initData (Frontend state) = runExcept $ evalStateT state initData
 
 -- Instances
 
-instance SymbolTableReader Frontend where
-  -- getSymtab :: m SymbolTable
-  getSymtab = gets symbolTable
+instance ReadSymbols Frontend where
+  symLookup name = gets (HM.lookup name . symbolTable)
 
-instance SymbolTableWriter Frontend where
-  -- putSymtab :: SymbolTable -> m ()
-  putSymtab symtab =
-    modify $ \frontendData -> frontendData { symbolTable = symtab }
+instance WriteSymbols Frontend where
+  symInsert symbol = do
+    let name = symName symbol
+    maybeSymbol <- gets (HM.lookup name . symbolTable)
+    case maybeSymbol of
+      Just symbol -> return $ Left $ SymbolExists symbol
+      Nothing     -> do
+        modify $ \frontendData -> frontendData
+          { symbolTable = HM.insert name symbol (symbolTable frontendData)
+          }
+        return $ Right ()
 
 instance LoopStackReader Frontend where
   -- getLoopStack :: m LoopStack

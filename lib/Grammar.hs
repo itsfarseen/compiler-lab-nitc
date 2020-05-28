@@ -21,6 +21,7 @@ module Grammar
   , Exp(..)
   , OpArithmetic(..)
   , OpLogical(..)
+  , Symbol(..)
   , mkIdent
   , mkStmtDeclare
   , mkStmtAssign
@@ -33,18 +34,18 @@ module Grammar
   , mkStmtBreak
   , mkStmtContinue
   , mkArrayIndex
-  , SymbolTableReader(..)
-  , SymbolTableWriter(..)
-  , SymbolTableRW
+  , ReadSymbols(..)
+  , WriteSymbols(..)
+  , SymbolExists(..)
   , LoopStackReader(..)
   , LoopStackWriter(..)
   , pushLoopStack
   , popLoopStack
   , lValueIdent
+  , dataTypeSize
   ) where
 
 
-import           Control.Error.Safe
 import           Flow
 
 import           Error (Error)
@@ -52,16 +53,12 @@ import qualified Error
 import LoopStack (LoopStack)
 import qualified LoopStack
 import           Span
-import qualified Symbol
-import           Symbol (DataType (..), pattern Symbol)
-import qualified SymbolTable
 import Control.Monad.Except ( MonadError, liftEither, throwError )
 import Control.Monad (unless)
+import Control.Monad.Extra (unlessM)
 import Data.Bifunctor (first)
 import Data.Either.Extra (maybeToEither)
 import Data.Maybe (fromJust, isJust)
-
-type SymbolTable = SymbolTable.SymbolTable ()
 
 newtype Program = Program { stmts :: [Stmt] }
 
@@ -91,7 +88,7 @@ data StmtContinue = MkStmtContinue Span
 data LValue = LValueIdent Ident | LValueArrayIndex RValue LValue Span
 data RValue = LValue LValue | Exp Exp
 
-data Ident = MkIdent String Span
+data Ident = MkIdent String Span deriving (Show)
 
 data Exp
   = ExpNum Int Span
@@ -101,38 +98,45 @@ data Exp
 data OpArithmetic = OpAdd | OpSub | OpMul | OpDiv | OpMod
 data OpLogical = OpLT | OpGT | OpLE | OpGE | OpEQ | OpNE
 
-mkIdent
-  :: (MonadError Error m, SymbolTableReader m) => String -> Span -> m Ident
+data Symbol =
+  Symbol
+    { symName :: String
+    , symDataType :: DataType
+    , symDeclSpan :: Span
+    }
+    deriving Show
+
+data DataType
+  = DataTypeInt
+  | DataTypeBool
+  | DataTypeArray Int DataType
+  deriving Eq
+
+mkIdent :: (MonadError Error m, ReadSymbols m) => String -> Span -> m Ident
 mkIdent name span = do
-  symtab <- getSymtab
-  unless (isJust (SymbolTable.lookup name symtab))
-         (throwError (Error.identifierNotDeclared name span))
+  unlessM (isJust <$> symLookup name)
+          (throwError (errIdentifierNotDeclared name span))
   return $ MkIdent name span
 
 mkStmtDeclare
-  :: (MonadError Error m, SymbolTableRW m)
+  :: (MonadError Error m, WriteSymbols m)
   => String
   -> DataType
   -> Span
   -> m StmtDeclare
 mkStmtDeclare identName dataType span = do
-  symtab  <- getSymtab
-  symtab' <- (SymbolTable.insert symbol symtab |> throwSymbolExists)
-  putSymtab symtab'
+  symInsert symbol >>= throwSymbolExists
   return $ MkStmtDeclare identName dataType span
  where
-  symbol = Symbol { Symbol.name     = identName
-                  , Symbol.declSpan = span
-                  , Symbol.dataType = dataType
-                  , Symbol.ext      = ()
-                  }
+  symbol =
+    Symbol { symName = identName, symDeclSpan = span, symDataType = dataType }
   throwSymbolExists = liftEither . first
-    (\(SymbolTable.SymbolExists symbol1) ->
-      Error.identifierRedeclared identName (Symbol.declSpan symbol1) span
+    (\(SymbolExists symbol1) ->
+      errIdentifierRedeclared identName (symDeclSpan symbol1) span
     )
 
 mkStmtAssign
-  :: (MonadError Error m, SymbolTableReader m)
+  :: (MonadError Error m, ReadSymbols m)
   => LValue
   -> RValue
   -> Span
@@ -141,7 +145,7 @@ mkStmtAssign lhs rhs span = do
   lhsType     <- lValueDataType lhs
   lhsDeclSpan <- lValueDeclSpan lhs
   rhsType     <- rValueDataType rhs
-  unless (lhsType == rhsType) $ throwError $ Error.assignmentTypeMismatch
+  unless (lhsType == rhsType) $ throwError $ errAssignmentTypeMismatch
     lhsType
     lhsDeclSpan
     rhsType
@@ -149,41 +153,37 @@ mkStmtAssign lhs rhs span = do
   return $ MkStmtAssign lhs rhs span
 
 mkStmtRead
-  :: (MonadError Error m, SymbolTableReader m) => LValue -> Span -> m StmtRead
+  :: (MonadError Error m, ReadSymbols m) => LValue -> Span -> m StmtRead
 mkStmtRead lhs span = do
   dataType <- lValueDataType lhs
-  unless (dataType == Symbol.DataTypeInt) $ throwError $ Error.typeNotAllowed
-    [Symbol.DataTypeInt]
+  unless (dataType == DataTypeInt) $ throwError $ errTypeNotAllowed
+    [DataTypeInt]
     dataType
     span
   return $ MkStmtRead lhs span
 
 mkStmtWrite
-  :: (MonadError Error m, SymbolTableReader m) => RValue -> Span -> m StmtWrite
+  :: (MonadError Error m, ReadSymbols m) => RValue -> Span -> m StmtWrite
 mkStmtWrite exp span = do
   dataType <- rValueDataType exp
-  unless (dataType == Symbol.DataTypeInt) $ throwError $ Error.typeNotAllowed
-    [Symbol.DataTypeInt]
+  unless (dataType == DataTypeInt) $ throwError $ errTypeNotAllowed
+    [DataTypeInt]
     dataType
     span
   return $ MkStmtWrite exp span
 
 mkStmtIf
-  :: (MonadError Error m, SymbolTableReader m)
-  => RValue
-  -> [Stmt]
-  -> Span
-  -> m StmtIf
+  :: (MonadError Error m, ReadSymbols m) => RValue -> [Stmt] -> Span -> m StmtIf
 mkStmtIf exp body span = do
   dataType <- rValueDataType exp
-  unless (dataType == Symbol.DataTypeBool) $ throwError $ Error.typeNotAllowed
-    [Symbol.DataTypeBool]
+  unless (dataType == DataTypeBool) $ throwError $ errTypeNotAllowed
+    [DataTypeBool]
     dataType
     span
   return $ MkStmtIf exp body span
 
 mkStmtIfElse
-  :: (MonadError Error m, SymbolTableReader m)
+  :: (MonadError Error m, ReadSymbols m)
   => RValue
   -> [Stmt]
   -> [Stmt]
@@ -191,36 +191,36 @@ mkStmtIfElse
   -> m StmtIfElse
 mkStmtIfElse exp thenBody elseBody span = do
   dataType <- rValueDataType exp
-  unless (dataType == Symbol.DataTypeBool) $ throwError $ Error.typeNotAllowed
-    [Symbol.DataTypeBool]
+  unless (dataType == DataTypeBool) $ throwError $ errTypeNotAllowed
+    [DataTypeBool]
     dataType
     span
   return $ MkStmtIfElse exp thenBody elseBody span
 
 mkStmtWhile
-  :: (MonadError Error m, SymbolTableReader m)
+  :: (MonadError Error m, ReadSymbols m)
   => RValue
   -> [Stmt]
   -> Span
   -> m StmtWhile
 mkStmtWhile exp body span = do
   dataType <- rValueDataType exp
-  unless (dataType == Symbol.DataTypeBool) $ throwError $ Error.typeNotAllowed
-    [Symbol.DataTypeBool]
+  unless (dataType == DataTypeBool) $ throwError $ errTypeNotAllowed
+    [DataTypeBool]
     dataType
     span
   return $ MkStmtWhile exp body span
 
 mkStmtDoWhile
-  :: (MonadError Error m, SymbolTableReader m)
+  :: (MonadError Error m, ReadSymbols m)
   => RValue
   -> [Stmt]
   -> Span
   -> m StmtDoWhile
 mkStmtDoWhile exp body span = do
   dataType <- rValueDataType exp
-  unless (dataType == Symbol.DataTypeBool) $ throwError $ Error.typeNotAllowed
-    [Symbol.DataTypeBool]
+  unless (dataType == DataTypeBool) $ throwError $ errTypeNotAllowed
+    [DataTypeBool]
     dataType
     span
   return $ MkStmtDoWhile exp body span
@@ -240,13 +240,15 @@ mkStmtContinue span = do
   return $ MkStmtContinue span
   where throwOutOfLoop = liftEither . maybeToEither (Error.syntaxError span)
 
+
+{-
+  int foo[m][n] -> Arr m (Arr n Int)
+  foo[x][y] -> Idx x (Idx y foo)
+-}
+
 -- TODO - !!! Fix erroring out on index
 mkArrayIndex
-  :: (MonadError Error m, SymbolTableReader m)
-  => LValue
-  -> RValue
-  -> Span
-  -> m LValue
+  :: (MonadError Error m, ReadSymbols m) => LValue -> RValue -> Span -> m LValue
 mkArrayIndex lValue index span = do
   dataType <- lValueDataType lValue
   unless
@@ -254,9 +256,10 @@ mkArrayIndex lValue index span = do
         DataTypeArray _ _ -> True
         _                 -> False
       )
-    $ throwError (Error.syntaxError span) -- TODO Better error
+    $ throwError (Error.customError "mkArrayIndex: LValue not an array" span) -- TODO Better error
   indexType <- rValueDataType index
-  unless (indexType == DataTypeInt) $ throwError (Error.syntaxError span) -- TODO Better error
+  unless (indexType == DataTypeInt)
+    $ throwError (Error.customError "mkArrayIndex: RValue not Int" span) -- TODO Better error
   return $ LValueArrayIndex index lValue span
 
 -- Helper Functions
@@ -265,25 +268,30 @@ lValueIdent :: LValue -> Ident
 lValueIdent (LValueIdent ident          ) = ident
 lValueIdent (LValueArrayIndex _ lValue _) = lValueIdent lValue
 
-rValueDataType
-  :: (MonadError Error m, SymbolTableReader m) => RValue -> m DataType
+rValueDataType :: (MonadError Error m, ReadSymbols m) => RValue -> m DataType
 rValueDataType (LValue v  ) = lValueDataType v
 rValueDataType (Exp    exp) = return $ expDataType exp
 
-lValueDataType
-  :: (MonadError Error m, SymbolTableReader m) => LValue -> m DataType
+lValueDataType :: (MonadError Error m, ReadSymbols m) => LValue -> m DataType
 lValueDataType lValue = case lValue of
   (LValueArrayIndex _ lValueInner _) -> do
     dataType <- lValueDataType lValueInner
-    let (DataTypeArray _ innerType) = dataType
-    return innerType
+    return $ dataTypeRemoveInner dataType
   (LValueIdent (MkIdent identName _)) ->
-    Symbol.dataType . fromJust . SymbolTable.lookup identName <$> getSymtab
+    symDataType . fromJust <$> symLookup identName
 
-lValueDeclSpan :: (SymbolTableReader m) => LValue -> m Span
+dataTypeRemoveInner :: DataType -> DataType
+dataTypeRemoveInner dataType = case dataType of
+  DataTypeArray _dim innerDataType -> case innerDataType of
+    DataTypeArray{} -> dataTypeRemoveInner innerDataType
+    _               -> innerDataType
+  _ -> error "removeInner: not DataTypeArray"
+
+
+lValueDeclSpan :: (ReadSymbols m) => LValue -> m Span
 lValueDeclSpan lValue = case lValue of
   LValueIdent (MkIdent identName _) ->
-    Symbol.declSpan . fromJust . SymbolTable.lookup identName <$> getSymtab
+    symDeclSpan . fromJust <$> symLookup identName
   LValueArrayIndex _ lValueInner _ -> lValueDeclSpan lValueInner
 
 
@@ -311,15 +319,33 @@ instance HasSpan Exp where
     ExpArithmetic _ _ _ span -> span
     ExpLogical    _ _ _ span -> span
 
+-- DataType
+
+instance Show DataType where
+  show dataType =
+    let (s, dims) = dataTypeDims dataType
+    in  s ++ concatMap (\n -> "[" ++ show n ++ "]") dims
+
+dataTypeDims dataType = case dataType of
+  DataTypeInt  -> ("int", [])
+  DataTypeBool -> ("bool", [])
+  DataTypeArray dim inner ->
+    let (s, dims) = dataTypeDims inner in (s, dim : dims)
+
+dataTypeSize :: DataType -> Int
+dataTypeSize DataTypeInt                = 1
+dataTypeSize DataTypeBool               = 1
+dataTypeSize (DataTypeArray size inner) = size * dataTypeSize inner
+
 -- Typeclasses
 
-class Monad m => SymbolTableReader m where
-  getSymtab :: m SymbolTable
+class Monad m => ReadSymbols m where
+  symLookup :: String -> m (Maybe Symbol)
 
-class Monad m => SymbolTableWriter m where
-  putSymtab :: SymbolTable -> m ()
+class ReadSymbols m => WriteSymbols m where
+  symInsert :: Symbol ->  m (Either (SymbolExists) ())
 
-type SymbolTableRW m = (SymbolTableReader m, SymbolTableWriter m)
+data SymbolExists = SymbolExists Symbol
 
 class Monad m => LoopStackReader m where
   getLoopStack :: m LoopStack
@@ -332,3 +358,43 @@ pushLoopStack = getLoopStack >>= (putLoopStack . LoopStack.push)
 
 popLoopStack :: (LoopStackReader m, LoopStackWriter m) => m ()
 popLoopStack = getLoopStack >>= (putLoopStack . fromJust . LoopStack.pop)
+
+
+-- Errors
+
+errIdentifierNotDeclared :: String -> Span -> Error
+errIdentifierNotDeclared identName span =
+  [("Identifier not declared: " ++ identName, span)]
+
+errIdentifierRedeclared :: String -> Span -> Span -> Error
+errIdentifierRedeclared identName declSpan span =
+  [ ("Identifier redeclared: " ++ identName, span)
+  , ("Was already declared here"           , declSpan)
+  ]
+
+-- errIdentifierNotInitialized :: String -> Span -> Span -> Error
+-- errIdentifierNotInitialized identName declSpan span =
+--   [ ("Identifier not initialized: " ++ identName, span)
+--   , ("Was declared here"                        , declSpan)
+--   ]
+
+errAssignmentTypeMismatch :: DataType -> Span -> DataType -> Span -> Error
+errAssignmentTypeMismatch identDataType declSpan rhsDataType span =
+  [ ( "Assignment type mismatch - "
+      ++ show identDataType
+      ++ " = "
+      ++ show rhsDataType
+    , span
+    )
+  , ("Was declared here", declSpan)
+  ]
+
+errTypeNotAllowed :: [DataType] -> DataType -> Span -> Error
+errTypeNotAllowed allowedTypes gotType span =
+  [ ( "Type not allowed: "
+      ++ show gotType
+      ++ ". Allowed types: "
+      ++ show allowedTypes
+    , span
+    )
+  ]
