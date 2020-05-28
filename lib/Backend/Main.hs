@@ -4,12 +4,10 @@ import qualified Backend.CodeUtils as CodeUtils
 import Backend.CodeUtils (CodeOutputMode)
 import qualified Backend.Codegen as Codegen
 import qualified Backend.Compiler as Compiler
-import Grammar (Program)
+import Grammar (Program, Symbol)
 import Error (Error)
-import SymbolTable (SymbolTable)
 
-
-main :: Program -> CodeOutputMode -> SymbolTable () -> Either Error String
-main program mode symtab = flip Compiler.runCompiler symtab $ do
+main :: Program -> CodeOutputMode -> [Symbol] -> Either Error String
+main program mode symbols = flip Compiler.runCompiler symbols $ do
   Codegen.parseProgram program
   CodeUtils.getCode mode

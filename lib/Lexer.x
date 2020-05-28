@@ -4,14 +4,12 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Lexer where
 
-import Control.Monad.State
 import Control.Monad.Except
 import Codec.Binary.UTF8.String (decode)
 import Data.Word (Word8)
 
 import Token
-import Frontend (Frontend, AlexInput(..), AlexInputState(..))
-import qualified Frontend
+import Frontend (AlexInput(..), AlexInputState(..))
 import Span
 import Error (Error)
 import qualified Error
@@ -151,7 +149,7 @@ readToken = do
   alexInput@AlexInput { alexInputStr, alexTokenOffset } <- getAlexInput
   case alexScan alexInput 0 of
     AlexEOF     -> return $ TokenEOF $ Span alexTokenOffset 0
-    AlexError _ -> throwError $ Error.syntaxError $ Span alexTokenOffset 1
+    AlexError _ -> throwError $ Error.customError "Parsing Error" $ Span alexTokenOffset 1
     AlexSkip alexInput' _ ->
       do
         putAlexInput $ alexInput'

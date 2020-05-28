@@ -9,7 +9,6 @@ import Token
 import Span
 import Error (Error)
 import qualified Error
-import Symbol (DataType(..))
 
 import Text.Printf
 import Control.Monad.Error
@@ -177,7 +176,7 @@ StmtContinue:
 
 LValue:
       Ident               {LValueIdent $1}
-    | ArrayIndex          {LValueArrayIndex $1}
+    | ArrayIndex          {$1}
 
 RValue:
       LValue              {LValue $1}
@@ -209,11 +208,18 @@ Exp:
 DataType:
     int                     {SpanW DataTypeInt (getSpan $1)}
   | bool                    {SpanW DataTypeBool (getSpan $1)}
---  | DataType '[' number ']' {SpanW (dataTypeReverseAddDim (spanWVal $1) (spanWVal $3)) (getSpanBwn $1 $4)}
+  | DataType '[' number ']' {SpanW (dataTypeReverseAddDim (spanWVal $1) (spanWVal $3)) (getSpanBwn $1 $4)}
 
 {
 
+dataTypeReverseAddDim :: DataType -> Int -> DataType
+dataTypeReverseAddDim dataType size = case dataType of
+  DataTypeInt  -> DataTypeArray size dataType
+  DataTypeBool -> DataTypeArray size dataType
+  DataTypeArray size' inner ->
+    DataTypeArray size' (dataTypeReverseAddDim inner size)
+
 parseError :: Token -> Frontend a
-parseError token = throwError $ Error.syntaxError $ getSpan token
+parseError token = throwError $ Error.customError ("Parsing error 2: " ++ (show token)) $ getSpan token
 
 }

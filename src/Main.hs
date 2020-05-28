@@ -1,6 +1,5 @@
 module Main where
 
-import Codec.Binary.UTF8.String (encode)
 import Control.Monad.State
 import Control.Monad.Except (ExceptT, runExceptT, liftEither)
 import System.Environment
@@ -14,9 +13,6 @@ import Frontend
 import qualified Grammar
 import Parser
 import Span
-import SymbolTable (SymbolTable)
-import qualified SymbolTable
-
 
 prompt :: String -> IO String
 prompt text = do
@@ -24,11 +20,11 @@ prompt text = do
   hFlush stdout
   getLine
 
-frontend :: Frontend (Grammar.Program, SymbolTable ())
+frontend :: Frontend (Grammar.Program, [Grammar.Symbol])
 frontend = do
   program <- Parser.parse
-  symtab  <- gets Frontend.symbolTable
-  return (program, symtab)
+  symbols <- gets Frontend.symbols
+  return (program, symbols)
 
 main :: IO ()
 main = do
@@ -46,9 +42,9 @@ main = do
       exitFailure
   input <- readFile inputFile
   handleError input inputFile $ do
-    (program, symtab) <- liftEither
+    (program, symbols) <- liftEither
       $ Frontend.runFrontend (Frontend.initData input) frontend
-    output <- liftEither $ Backend.main program codeOutputMode symtab
+    output <- liftEither $ Backend.main program codeOutputMode symbols
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()

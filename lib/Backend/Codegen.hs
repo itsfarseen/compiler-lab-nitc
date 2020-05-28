@@ -1,25 +1,18 @@
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE ConstraintKinds #-}
 
 module Backend.Codegen where
 
-import Backend.Compiler
-import Backend.CompilerUtils
 import Backend.Instructions
 import Backend.Reg
-import Control.Monad.Except
-import Control.Monad.State.Strict (gets)
-import Data.List
-import Grammar
-import qualified SymbolTable
-import qualified Symbol
+import Grammar hiding (Symbol(..))
 
-parseProgram :: Program -> Compiler ()
+parseProgram :: (CompilerClass m) => Program -> m ()
 parseProgram program = do
   let (Program stmts) = program
   mapM_ execStmt stmts
 
-execStmt :: Stmt -> Compiler ()
+execStmt :: (CompilerClass m) => Stmt -> m ()
 execStmt stmt = case stmt of
   StmtDeclare  stmt -> execStmtDeclare stmt
   StmtAssign   stmt -> execStmtAssign stmt
@@ -32,10 +25,10 @@ execStmt stmt = case stmt of
   StmtBreak    stmt -> execStmtBreak stmt
   StmtContinue stmt -> execStmtContinue stmt
 
-execStmtDeclare :: StmtDeclare -> Compiler ()
+execStmtDeclare :: (CompilerClass m) => StmtDeclare -> m ()
 execStmtDeclare _ = return ()
 
-execStmtAssign :: StmtAssign -> Compiler ()
+execStmtAssign :: (CompilerClass m) => StmtAssign -> m ()
 execStmtAssign stmt = do
   let (MkStmtAssign lhs rhs _) = stmt
   rhsReg    <- getRValueInReg rhs
@@ -45,7 +38,7 @@ execStmtAssign stmt = do
   releaseReg rhsReg
   return ()
 
-execStmtRead :: StmtRead -> Compiler ()
+execStmtRead :: (CompilerClass m) => StmtRead -> m ()
 execStmtRead stmt = do
   let MkStmtRead lValue _ = stmt
   lValueLocReg <- getLValueLocInReg lValue
@@ -69,14 +62,14 @@ execStmtRead stmt = do
   releaseReg t1
   releaseReg lValueLocReg
 
-execStmtWrite :: StmtWrite -> Compiler ()
+execStmtWrite :: (CompilerClass m) => StmtWrite -> m ()
 execStmtWrite stmt = do
   let MkStmtWrite rValue _ = stmt
   reg <- getRValueInReg rValue
   printReg reg
   releaseReg reg
 
-execStmtIf :: StmtIf -> Compiler ()
+execStmtIf :: (CompilerClass m) => StmtIf -> m ()
 execStmtIf stmt = do
   let MkStmtIf condition stmts _ = stmt
   condReg  <- getRValueInReg condition
@@ -86,7 +79,7 @@ execStmtIf stmt = do
   installLabel endLabel
   releaseReg condReg
 
-execStmtIfElse :: StmtIfElse -> Compiler ()
+execStmtIfElse :: (CompilerClass m) => StmtIfElse -> m ()
 execStmtIfElse stmt = do
   let MkStmtIfElse condition stmtsThen stmtsElse _ = stmt
   condReg   <- getRValueInReg condition
@@ -100,7 +93,7 @@ execStmtIfElse stmt = do
   installLabel endLabel
   releaseReg condReg
 
-loopBody :: (String -> String -> Compiler ()) -> Compiler ()
+loopBody :: (CompilerClass m) => (String -> String -> m ()) -> m ()
 loopBody body = do
   startLabel <- getNewLabel
   endLabel   <- getNewLabel
@@ -113,7 +106,7 @@ loopBody body = do
   _ <- popLoopBreakLabel
   return ()
 
-execStmtWhile :: StmtWhile -> Compiler ()
+execStmtWhile :: (CompilerClass m) => StmtWhile -> m ()
 execStmtWhile stmt = do
   let MkStmtWhile condition stmts _ = stmt
   r <- getRValueInReg condition
@@ -123,7 +116,7 @@ execStmtWhile stmt = do
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
   releaseReg r
 
-execStmtDoWhile :: StmtDoWhile -> Compiler ()
+execStmtDoWhile :: (CompilerClass m) => StmtDoWhile -> m ()
 execStmtDoWhile stmt = do
   let MkStmtDoWhile condition stmts _ = stmt
   r <- getRValueInReg condition
@@ -133,17 +126,17 @@ execStmtDoWhile stmt = do
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
   releaseReg r
 
-execStmtBreak :: StmtBreak -> Compiler ()
+execStmtBreak :: (CompilerClass m) => StmtBreak -> m ()
 execStmtBreak _ = do
   endLabel <- peekLoopBreakLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JMP endLabel]
 
-execStmtContinue :: StmtContinue -> Compiler ()
+execStmtContinue :: (CompilerClass m) => StmtContinue -> m ()
 execStmtContinue _ = do
   endLabel <- peekLoopContinueLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JMP endLabel]
 
-printReg :: Reg -> Compiler ()
+printReg :: (CompilerClass m) => Reg -> m ()
 printReg reg = do
   t1 <- getFreeReg
   let code =
@@ -164,21 +157,18 @@ printReg reg = do
   appendCode code
   releaseReg t1
 
-getLValueLocInReg :: LValue -> Compiler Reg
+getLValueLocInReg :: (CompilerClass m) => LValue -> m Reg
 getLValueLocInReg lValue = do
   let ident = Grammar.lValueIdent lValue
   dataType <- getIdentDataType ident
   (reg, _) <- getLValueLocInReg' dataType lValue
   return reg
  where
-  getLValueLocInReg' :: Symbol.DataType -> LValue -> Compiler (Reg, Int)
+  getLValueLocInReg' :: (CompilerClass m) => DataType -> LValue -> m (Reg, Int)
   getLValueLocInReg' dataType lValue = case lValue of
     LValueIdent ident -> do
-      dataType' <- getIdentDataType ident
-      when (dataType /= dataType')
-        $ error "Program bug: data type mismatch in getLValueInReg"
       case dataType of
-        Symbol.DataTypeArray{} ->
+        DataTypeArray{} ->
           error
             $  "Program bug: Can not getLValueInReg, dataType is Array"
             ++ (show dataType)
@@ -186,9 +176,9 @@ getLValueLocInReg lValue = do
       reg <- getFreeReg
       loc <- getIdentLocInStack ident
       appendCode [XSM_MOV_Int reg loc]
-      return (reg, Symbol.getSize dataType)
+      return (reg, dataTypeSize dataType)
     LValueArrayIndex index lValue _ -> case dataType of
-      Symbol.DataTypeArray dim innerType -> do
+      DataTypeArray dim innerType -> do
         (reg, innerSize) <- getLValueLocInReg' innerType lValue
         indexReg         <- getRValueInReg index
         t                <- getFreeReg
@@ -200,7 +190,7 @@ getLValueLocInReg lValue = do
         return (reg, innerSize * dim)
       _ -> error "Program Bug: Dereferencing non-Array type"
 
-getRValueInReg :: RValue -> Compiler Reg
+getRValueInReg :: (CompilerClass m) => RValue -> m Reg
 getRValueInReg rValue = case rValue of
   (Exp (ExpNum i _)) -> do
     reg <- getFreeReg
@@ -215,7 +205,7 @@ getRValueInReg rValue = case rValue of
 
 type ALUInstr = (Reg -> Reg -> XSMInstr)
 
-execALUInstr :: ALUInstr -> RValue -> RValue -> Compiler Reg
+execALUInstr :: (CompilerClass m) => ALUInstr -> RValue -> RValue -> m Reg
 execALUInstr instr e1 e2 = do
   r1 <- getRValueInReg e1
   r2 <- getRValueInReg e2
@@ -239,3 +229,27 @@ logicOpInstr op = case op of
   OpGE -> XSM_GE
   OpNE -> XSM_NE
   OpEQ -> XSM_EQ
+
+
+class Monad m => Idents m where
+  getIdentLocInStack :: Ident -> m Int
+  getIdentDataType :: Ident -> m DataType
+
+class Monad m => FreeRegs m where
+  getFreeReg :: m Reg
+  releaseReg :: Reg -> m ()
+
+class Monad m => Code m where
+  appendCode :: [XSMInstr] -> m ()
+
+class Code m => Labels m where
+  getNewLabel :: m String
+  installLabel :: String -> m ()
+  pushLoopBreakLabel :: String -> m ()
+  pushLoopContinueLabel :: String -> m ()
+  popLoopBreakLabel :: m ()
+  popLoopContinueLabel :: m ()
+  peekLoopBreakLabel :: m String
+  peekLoopContinueLabel :: m String
+
+type CompilerClass m = (Idents m, FreeRegs m, Code m, Labels m)

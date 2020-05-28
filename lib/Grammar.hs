@@ -22,6 +22,7 @@ module Grammar
   , OpArithmetic(..)
   , OpLogical(..)
   , Symbol(..)
+  , DataType(..)
   , mkIdent
   , mkStmtDeclare
   , mkStmtAssign
