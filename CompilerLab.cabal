@@ -40,7 +40,7 @@ library
   hs-source-dirs:
       lib
   -- ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -Wno-unused-imports -O0
+  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -O0
   build-depends:
       base
     , flow
@@ -58,7 +58,7 @@ library
 
 executable CompilerLab
   main-is: Main.hs
-  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -Wno-unused-imports -O0
+  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -O0
   hs-source-dirs:
     src
   build-depends:
@@ -78,6 +78,9 @@ test-suite test
     tests
   main-is:
     Main.hs
+  other-modules:
+    Test.Backend.Simulator
+    Test.Backend.Codegen
   build-depends:
       base
     , CompilerLab
@@ -85,5 +88,5 @@ test-suite test
     , flow
     , tasty
     , tasty-hunit
-    , tasty-th
-  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -Wno-unused-imports -O0
+    , tasty-discover
+  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -O0
