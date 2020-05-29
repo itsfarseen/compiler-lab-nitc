@@ -25,15 +25,12 @@ library
       , Lexer
       , Error
       , Frontend
-      , Symbol
       , Token
       , LoopStack
-      , SymbolTable
       , Backend.Codegen
       , Backend.Compiler
       , Backend.Instructions
       , Backend.Reg
-      , Backend.CompilerUtils
       , Backend.CodeUtils
       , Backend.Main
       , Backend.Simulator
@@ -85,6 +82,7 @@ test-suite test
       base
     , CompilerLab
     , extra
+    , mtl
     , flow
     , tasty
     , tasty-hunit

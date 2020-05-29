@@ -5,7 +5,7 @@ module Backend.Codegen where
 
 import Backend.Instructions
 import Backend.Reg
-import Grammar hiding (Symbol(..))
+import Grammar
 
 parseProgram :: (CompilerClass m) => Program -> m ()
 parseProgram program = do
@@ -109,22 +109,22 @@ loopBody body = do
 execStmtWhile :: (CompilerClass m) => StmtWhile -> m ()
 execStmtWhile stmt = do
   let MkStmtWhile condition stmts _ = stmt
-  r <- getRValueInReg condition
   loopBody $ \startLabel endLabel -> do
+    r <- getRValueInReg condition
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
+    releaseReg r
     mapM_ execStmt stmts
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
-  releaseReg r
 
 execStmtDoWhile :: (CompilerClass m) => StmtDoWhile -> m ()
 execStmtDoWhile stmt = do
   let MkStmtDoWhile condition stmts _ = stmt
-  r <- getRValueInReg condition
   loopBody $ \startLabel endLabel -> do
     mapM_ execStmt stmts
+    r <- getRValueInReg condition
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
+    releaseReg r
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
-  releaseReg r
 
 execStmtBreak :: (CompilerClass m) => StmtBreak -> m ()
 execStmtBreak _ = do

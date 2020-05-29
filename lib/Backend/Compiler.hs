@@ -110,9 +110,7 @@ instance Labels Compiler where
 
   popLoopBreakLabel  = do
     compiler <- get
-    -- let label = last (loopBreakLabels compiler)
     put compiler { loopBreakLabels = init (loopBreakLabels compiler) }
-    -- return label
 
   pushLoopContinueLabel label = do
     compiler <- get
@@ -122,6 +120,4 @@ instance Labels Compiler where
 
   popLoopContinueLabel  = do
     compiler <- get
-    -- let label = last (loopContinueLabels compiler)
     put compiler { loopContinueLabels = init (loopContinueLabels compiler) }
-    -- return label
