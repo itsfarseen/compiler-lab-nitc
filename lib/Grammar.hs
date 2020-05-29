@@ -35,6 +35,8 @@ module Grammar
   , mkStmtBreak
   , mkStmtContinue
   , mkArrayIndex
+  , mkExpArithmetic
+  , mkExpLogical
   , ReadSymbols(..)
   , WriteSymbols(..)
   , SymbolExists(..)
@@ -75,26 +77,26 @@ data Stmt
   | StmtBreak StmtBreak
   | StmtContinue StmtContinue
 
-data StmtDeclare = MkStmtDeclare String DataType Span
-data StmtAssign = MkStmtAssign LValue RValue Span
-data StmtRead = MkStmtRead LValue Span
-data StmtWrite = MkStmtWrite RValue Span
-data StmtIf = MkStmtIf RValue [Stmt] Span
-data StmtIfElse = MkStmtIfElse RValue [Stmt] [Stmt] Span
-data StmtWhile = MkStmtWhile RValue [Stmt] Span
-data StmtDoWhile = MkStmtDoWhile RValue [Stmt] Span
-data StmtBreak = MkStmtBreak Span
-data StmtContinue = MkStmtContinue Span
+data StmtDeclare = MkStmtDeclare String DataType
+data StmtAssign = MkStmtAssign LValue RValue
+data StmtRead = MkStmtRead LValue
+data StmtWrite = MkStmtWrite RValue
+data StmtIf = MkStmtIf RValue [Stmt]
+data StmtIfElse = MkStmtIfElse RValue [Stmt] [Stmt]
+data StmtWhile = MkStmtWhile RValue [Stmt]
+data StmtDoWhile = MkStmtDoWhile RValue [Stmt]
+data StmtBreak = MkStmtBreak
+data StmtContinue = MkStmtContinue
 
-data LValue = LValueIdent Ident | LValueArrayIndex RValue LValue Span
+data LValue = LValueIdent Ident | LValueArrayIndex RValue LValue
 data RValue = LValue LValue | Exp Exp
 
-data Ident = MkIdent String Span deriving (Show)
+data Ident = MkIdent String deriving (Show)
 
 data Exp
-  = ExpNum Int Span
-  | ExpArithmetic RValue OpArithmetic RValue Span
-  | ExpLogical RValue OpLogical RValue Span
+  = ExpNum Int
+  | ExpArithmetic RValue OpArithmetic RValue
+  | ExpLogical RValue OpLogical RValue
 
 data OpArithmetic = OpAdd | OpSub | OpMul | OpDiv | OpMod
 data OpLogical = OpLT | OpGT | OpLE | OpGE | OpEQ | OpNE
@@ -113,11 +115,11 @@ data DataType
   | DataTypeArray Int DataType
   deriving Eq
 
-mkIdent :: (MonadError Error m, ReadSymbols m) => String -> Span -> m Ident
-mkIdent name span = do
+mkIdent :: (MonadError Error m, ReadSymbols m) => SpanW String -> m Ident
+mkIdent (SpanW name span) = do
   unlessM (isJust <$> symLookup name)
           (throwError (errIdentifierNotDeclared name span))
-  return $ MkIdent name span
+  return $ MkIdent name
 
 mkStmtDeclare
   :: (MonadError Error m, WriteSymbols m)
@@ -127,7 +129,7 @@ mkStmtDeclare
   -> m StmtDeclare
 mkStmtDeclare identName dataType span = do
   symInsert symbol >>= throwSymbolExists
-  return $ MkStmtDeclare identName dataType span
+  return $ MkStmtDeclare identName dataType
  where
   symbol =
     Symbol { symName = identName, symDeclSpan = span, symDataType = dataType }
@@ -151,86 +153,82 @@ mkStmtAssign lhs rhs span = do
     lhsDeclSpan
     rhsType
     span
-  return $ MkStmtAssign lhs rhs span
+  return $ MkStmtAssign lhs rhs
 
-mkStmtRead
-  :: (MonadError Error m, ReadSymbols m) => LValue -> Span -> m StmtRead
-mkStmtRead lhs span = do
-  dataType <- lValueDataType lhs
+mkStmtRead :: (MonadError Error m, ReadSymbols m) => SpanW LValue -> m StmtRead
+mkStmtRead (SpanW lValue lValueSpan) = do
+  dataType <- lValueDataType lValue
   unless (dataType == DataTypeInt) $ throwError $ errTypeNotAllowed
     [DataTypeInt]
     dataType
-    span
-  return $ MkStmtRead lhs span
+    lValueSpan
+  return $ MkStmtRead lValue
 
 mkStmtWrite
-  :: (MonadError Error m, ReadSymbols m) => RValue -> Span -> m StmtWrite
-mkStmtWrite exp span = do
-  dataType <- rValueDataType exp
+  :: (MonadError Error m, ReadSymbols m) => SpanW RValue -> m StmtWrite
+mkStmtWrite (SpanW rValue rValueSpan) = do
+  dataType <- rValueDataType rValue
   unless (dataType == DataTypeInt) $ throwError $ errTypeNotAllowed
     [DataTypeInt]
     dataType
-    span
-  return $ MkStmtWrite exp span
+    rValueSpan
+  return $ MkStmtWrite rValue
 
 mkStmtIf
-  :: (MonadError Error m, ReadSymbols m) => RValue -> [Stmt] -> Span -> m StmtIf
-mkStmtIf exp body span = do
-  dataType <- rValueDataType exp
+  :: (MonadError Error m, ReadSymbols m) => SpanW RValue -> [Stmt] -> m StmtIf
+mkStmtIf (SpanW cond span) body = do
+  dataType <- rValueDataType cond
   unless (dataType == DataTypeBool) $ throwError $ errTypeNotAllowed
     [DataTypeBool]
     dataType
     span
-  return $ MkStmtIf exp body span
+  return $ MkStmtIf cond body
 
 mkStmtIfElse
   :: (MonadError Error m, ReadSymbols m)
-  => RValue
+  => SpanW RValue
   -> [Stmt]
   -> [Stmt]
-  -> Span
   -> m StmtIfElse
-mkStmtIfElse exp thenBody elseBody span = do
-  dataType <- rValueDataType exp
+mkStmtIfElse (SpanW cond span) thenBody elseBody = do
+  dataType <- rValueDataType cond
   unless (dataType == DataTypeBool) $ throwError $ errTypeNotAllowed
     [DataTypeBool]
     dataType
     span
-  return $ MkStmtIfElse exp thenBody elseBody span
+  return $ MkStmtIfElse cond thenBody elseBody
 
 mkStmtWhile
   :: (MonadError Error m, ReadSymbols m)
-  => RValue
+  => SpanW RValue
   -> [Stmt]
-  -> Span
   -> m StmtWhile
-mkStmtWhile exp body span = do
-  dataType <- rValueDataType exp
+mkStmtWhile (SpanW cond span) body = do
+  dataType <- rValueDataType cond
   unless (dataType == DataTypeBool) $ throwError $ errTypeNotAllowed
     [DataTypeBool]
     dataType
     span
-  return $ MkStmtWhile exp body span
+  return $ MkStmtWhile cond body
 
 mkStmtDoWhile
   :: (MonadError Error m, ReadSymbols m)
-  => RValue
+  => SpanW RValue
   -> [Stmt]
-  -> Span
   -> m StmtDoWhile
-mkStmtDoWhile exp body span = do
-  dataType <- rValueDataType exp
+mkStmtDoWhile (SpanW cond span) body = do
+  dataType <- rValueDataType cond
   unless (dataType == DataTypeBool) $ throwError $ errTypeNotAllowed
     [DataTypeBool]
     dataType
     span
-  return $ MkStmtDoWhile exp body span
+  return $ MkStmtDoWhile cond body
 
 mkStmtBreak :: (MonadError Error m, LoopStackReader m) => Span -> m StmtBreak
 mkStmtBreak span = do
   loopStack <- getLoopStack
   _         <- LoopStack.pop loopStack |> throwOutOfLoop
-  return $ MkStmtBreak span
+  return $ MkStmtBreak
   where throwOutOfLoop = liftEither . maybeToEither (Error.syntaxError span)
 
 mkStmtContinue
@@ -238,36 +236,67 @@ mkStmtContinue
 mkStmtContinue span = do
   loopStack <- getLoopStack
   _         <- LoopStack.pop loopStack |> throwOutOfLoop
-  return $ MkStmtContinue span
+  return $ MkStmtContinue
   where throwOutOfLoop = liftEither . maybeToEither (Error.syntaxError span)
 
 
-{-
-  int foo[m][n] -> Arr m (Arr n Int)
-  foo[x][y] -> Idx x (Idx y foo)
--}
-
 -- TODO - !!! Fix erroring out on index
 mkArrayIndex
-  :: (MonadError Error m, ReadSymbols m) => LValue -> RValue -> Span -> m LValue
-mkArrayIndex lValue index span = do
+  :: (MonadError Error m, ReadSymbols m)
+  => SpanW LValue
+  -> SpanW RValue
+  -> m LValue
+mkArrayIndex (SpanW lValue lValueSpan) (SpanW index indexSpan) = do
+  -- int foo[m][n] -> Arr m (Arr n Int)
+  -- foo[x][y] -> Idx x (Idx y foo)
   dataType <- lValueDataType lValue
   unless
       (case dataType of
         DataTypeArray _ _ -> True
         _                 -> False
       )
-    $ throwError (Error.customError "mkArrayIndex: LValue not an array" span) -- TODO Better error
+    $ throwError
+        (Error.customError "mkArrayIndex: LValue not an array" lValueSpan) -- TODO Better error
   indexType <- rValueDataType index
   unless (indexType == DataTypeInt)
-    $ throwError (Error.customError "mkArrayIndex: RValue not Int" span) -- TODO Better error
-  return $ LValueArrayIndex index lValue span
+    $ throwError (Error.customError "mkArrayIndex: index not int" indexSpan) -- TODO Better error
+  return $ LValueArrayIndex index lValue
+
+mkExpArithmetic
+  :: (ReadSymbols m, MonadError Error m)
+  => SpanW RValue
+  -> OpArithmetic
+  -> SpanW RValue
+  -> m Exp
+mkExpArithmetic (SpanW r1 span1) op (SpanW r2 span2) = do
+  dataType1 <- rValueDataType r1
+  unless (dataType1 == DataTypeInt)
+    $ throwError (errTypeNotAllowed [DataTypeInt] dataType1 span1)
+  dataType2 <- rValueDataType r2
+  unless (dataType2 == DataTypeInt)
+    $ throwError (errTypeNotAllowed [DataTypeInt] dataType2 span2)
+  return $ ExpArithmetic r1 op r2
+
+mkExpLogical
+  :: (ReadSymbols m, MonadError Error m)
+  => SpanW RValue
+  -> OpLogical
+  -> SpanW RValue
+  -> m Exp
+mkExpLogical (SpanW r1 span1) op (SpanW r2 span2) = do
+  dataType1 <- rValueDataType r1
+  unless (dataType1 == DataTypeInt)
+    $ throwError (errTypeNotAllowed [DataTypeInt] dataType1 span1)
+  dataType2 <- rValueDataType r2
+  unless (dataType2 == DataTypeInt)
+    $ throwError (errTypeNotAllowed [DataTypeInt] dataType2 span2)
+  return $ ExpLogical r1 op r2
 
 -- Helper Functions
 
 lValueIdent :: LValue -> Ident
-lValueIdent (LValueIdent ident          ) = ident
-lValueIdent (LValueArrayIndex _ lValue _) = lValueIdent lValue
+lValueIdent (LValueIdent ident        ) = ident
+lValueIdent (LValueArrayIndex _ lValue) = lValueIdent lValue
 
 rValueDataType :: (MonadError Error m, ReadSymbols m) => RValue -> m DataType
 rValueDataType (LValue v  ) = lValueDataType v
@@ -275,10 +304,10 @@ rValueDataType (Exp    exp) = return $ expDataType exp
 
 lValueDataType :: (MonadError Error m, ReadSymbols m) => LValue -> m DataType
 lValueDataType lValue = case lValue of
-  (LValueArrayIndex _ lValueInner _) -> do
+  (LValueArrayIndex _ lValueInner) -> do
     dataType <- lValueDataType lValueInner
     return $ dataTypeRemoveInner dataType
-  (LValueIdent (MkIdent identName _)) ->
+  (LValueIdent (MkIdent identName)) ->
     symDataType . fromJust <$> symLookup identName
 
 dataTypeRemoveInner :: DataType -> DataType
@@ -291,9 +320,9 @@ dataTypeRemoveInner dataType = case dataType of
 
 lValueDeclSpan :: (ReadSymbols m) => LValue -> m Span
 lValueDeclSpan lValue = case lValue of
-  LValueIdent (MkIdent identName _) ->
+  LValueIdent (MkIdent identName) ->
     symDeclSpan . fromJust <$> symLookup identName
-  LValueArrayIndex _ lValueInner _ -> lValueDeclSpan lValueInner
+  LValueArrayIndex _ lValueInner -> lValueDeclSpan lValueInner
 
 
 expDataType :: Exp -> DataType
@@ -301,24 +330,6 @@ expDataType exp = case exp of
   ExpNum{}        -> DataTypeInt
   ExpArithmetic{} -> DataTypeInt
   ExpLogical{}    -> DataTypeBool
-
--- HasSpan instances
-
-instance HasSpan RValue where
-  getSpan exp = case exp of
-    LValue v   -> getSpan v
-    Exp    exp -> getSpan exp
-
-instance HasSpan LValue where
-  getSpan exp = case exp of
-    LValueIdent (MkIdent _ span) -> span
-    LValueArrayIndex _ _ span    -> span
-
-instance HasSpan Exp where
-  getSpan exp = case exp of
-    ExpNum _ span            -> span
-    ExpArithmetic _ _ _ span -> span
-    ExpLogical    _ _ _ span -> span
 
 -- DataType
 

@@ -18,6 +18,9 @@ data SpanW a =
   SpanW a Span
   deriving (Show)
 
+instance Functor SpanW where
+  fmap f (SpanW a span) = SpanW (f a) span
+
 spanWVal (SpanW a _) = a
 
 class HasSpan a where

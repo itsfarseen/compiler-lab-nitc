@@ -1,17 +1,18 @@
 {
+{-# LANGUAGE FlexibleContexts #-}
 module Parser where
 
 import qualified Lexer
 import Frontend
 import Grammar
 import Token
-
 import Span
 import Error (Error)
 import qualified Error
 
 import Text.Printf
 import Control.Monad.Error
+import Data.Functor
 
 }
 
@@ -102,39 +103,39 @@ Stmt:
     | Stmt ';'              {$1}
 
 StmtDeclare:
-    DataType ident ';'     {% mkStmtDeclare (spanWVal $2) (spanWVal $1) (getSpanBwn $1 $3)}
+    DataType ident ';'       {% mkStmtDeclare (spanWVal $2) (spanWVal $1) (getSpanBwn $1 $3)}
 
 StmtAssign:
-    LValue '=' RValue ';'      {% mkStmtAssign $1 $3 (getSpanBwn $1 $4)}
+    LValue '=' RValue ';'    {% mkStmtAssign (spanWVal $1) (spanWVal $3) (getSpanBwn $1 $3)}
 
 StmtRead:
-    read '(' LValue ')' ';' {% mkStmtRead $3 (getSpanBwn $1 $5)}
+    read '(' LValue ')' ';'  {% mkStmtRead $3 }
 
 StmtWrite:
-    write '(' RValue ')' ';'  {% mkStmtWrite $3 (getSpanBwn $1 $5)}
+    write '(' RValue ')' ';' {% mkStmtWrite $3 }
 
 StmtIf:
       if '(' RValue ')' 
       then 
         Slist 
-      endif                {% mkStmtIf $3 $6 (getSpanBwn $1 $7)}
+      endif                {% mkStmtIf $3 $6 }
 
     | if '(' RValue ')' '{' 
         Slist 
-     '}'                   {% mkStmtIf $3 $6 (getSpanBwn $1 $7)}
+     '}'                   {% mkStmtIf $3 $6 }
                         
 StmtIfElse:
       if '(' RValue ')' then 
         Slist 
       else 
         Slist 
-      endif                {% mkStmtIfElse $3 $6 $8 (getSpanBwn $1 $9)}
+      endif                {% mkStmtIfElse $3 $6 $8 }
 
     | if '(' RValue ')' '{' 
         Slist 
       '}' else '{' 
         Slist 
-      '}'                  {% mkStmtIfElse $3 $6 $10 (getSpanBwn $1 $11)}
+      '}'                  {% mkStmtIfElse $3 $6 $10 }
 
 StmtWhileEnter1:
       while '(' RValue ')' do {% pushLoopStack >> return $3 }
@@ -151,11 +152,11 @@ StmtWhileExit2:
 StmtWhile:
       StmtWhileEnter1
         Slist 
-      StmtWhileExit1      {% mkStmtWhile $1 $2 (getSpanBwn $1 $3)}
+      StmtWhileExit1      {% mkStmtWhile $1 $2 }
 
     | StmtWhileEnter2
         Slist 
-      StmtWhileExit2      {% mkStmtWhile $1 $2 (getSpanBwn $1 $3)}
+      StmtWhileExit2      {% mkStmtWhile $1 $2 }
 
 StmtDoWhileEnter:
       do '{'              {% pushLoopStack >> return $1 }
@@ -166,42 +167,39 @@ StmtDoWhileExit:
 StmtDoWhile:
       StmtDoWhileEnter
         Slist 
-      StmtDoWhileExit     {% mkStmtDoWhile $3 $2 (getSpanBwn $1 $3)}
+      StmtDoWhileExit     {% mkStmtDoWhile $3 $2 }
 
 StmtBreak:
-      break ';'           {% mkStmtBreak (getSpanBwn $1 $2)}
+      break ';'           {% mkStmtBreak (getSpan $1)}
 
 StmtContinue:
-      continue ';'        {% mkStmtContinue (getSpanBwn $1 $2)}
+      continue ';'        {% mkStmtContinue (getSpan $1)}
 
 LValue:
-      Ident               {LValueIdent $1}
-    | ArrayIndex          {$1}
+      Ident                 {fmap LValueIdent $1}
+    | LValue '[' RValue ']' {% (mkArrayIndex $1 $3) <&> flip SpanW (getSpanBwn $1 $4)}
 
 RValue:
-      LValue              {LValue $1}
-    | Exp                 {Exp $1}
+      LValue              {fmap LValue $1}
+    | Exp                 {fmap Exp $1}
 
 Ident:
-     ident                 {% mkIdent (spanWVal $1) (getSpan $1)}
-
-ArrayIndex:
-     LValue '[' RValue ']' {% mkArrayIndex $1 $3 (getSpanBwn $1 $4)}
+     ident                {% (mkIdent $1) <&> flip SpanW (getSpan $1)}
 
 Exp: 
-     number               {ExpNum (spanWVal $1) (getSpan $1)}
+     number               {fmap ExpNum $1}
    | '(' Exp ')'          {$2}
-   | RValue '+' RValue          {ExpArithmetic $1 OpAdd $3 (getSpanBwn $1 $3)}
-   | RValue '-' RValue          {ExpArithmetic $1 OpSub $3 (getSpanBwn $1 $3)}
-   | RValue '*' RValue          {ExpArithmetic $1 OpMul $3 (getSpanBwn $1 $3)}
-   | RValue '/' RValue          {ExpArithmetic $1 OpDiv $3 (getSpanBwn $1 $3)}
-   | RValue '%' RValue          {ExpArithmetic $1 OpMod $3 (getSpanBwn $1 $3)}
-   | RValue '<' RValue          {ExpLogical $1 OpLT  $3 (getSpanBwn $1 $3)}
-   | RValue '>' RValue          {ExpLogical $1 OpGT  $3 (getSpanBwn $1 $3)}
-   | RValue '<=' RValue         {ExpLogical $1 OpLE  $3 (getSpanBwn $1 $3)}
-   | RValue '>=' RValue         {ExpLogical $1 OpGE  $3 (getSpanBwn $1 $3)}
-   | RValue '==' RValue         {ExpLogical $1 OpEQ  $3 (getSpanBwn $1 $3)}
-   | RValue '!=' RValue         {ExpLogical $1 OpNE  $3 (getSpanBwn $1 $3)}
+   | RValue '+' RValue    {% (mkExpArithmetic $1 OpAdd $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '-' RValue    {% (mkExpArithmetic $1 OpSub $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '*' RValue    {% (mkExpArithmetic $1 OpMul $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '/' RValue    {% (mkExpArithmetic $1 OpDiv $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '%' RValue    {% (mkExpArithmetic $1 OpMod $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '<' RValue    {% (mkExpLogical $1 OpLT  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '>' RValue    {% (mkExpLogical $1 OpGT  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '<=' RValue    {% (mkExpLogical $1 OpLE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '>=' RValue    {% (mkExpLogical $1 OpGE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '==' RValue    {% (mkExpLogical $1 OpEQ  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '!=' RValue    {% (mkExpLogical $1 OpNE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
 
 -- ExpArrayIndex:
 

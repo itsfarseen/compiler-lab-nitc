@@ -65,11 +65,11 @@ runCompiler compiler symbols = evalStateT compiler (initCompilerState symbols)
 instance Idents Compiler where
   getIdentLocInStack ident = (4096 +) <$> gets
     (symRelLoc . fromJust . find (\s -> symName s == identName) . symbolTable)
-    where Grammar.MkIdent identName _ = ident
+    where Grammar.MkIdent identName = ident
 
   getIdentDataType ident = gets
     (symDataType . fromJust . find (\s -> symName s == identName) . symbolTable)
-    where Grammar.MkIdent identName _ = ident
+    where Grammar.MkIdent identName = ident
 
 instance FreeRegs Compiler where
   getFreeReg = do

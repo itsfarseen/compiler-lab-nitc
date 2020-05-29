@@ -28,8 +28,8 @@ unit_getLValueLocInReg_Simple = do
         Compiler.runCompiler
         symbols
         (do
-          r1   <- getLValueLocInReg (LValueIdent $ MkIdent "foo" spanNull)
-          r2   <- getLValueLocInReg (LValueIdent $ MkIdent "bar" spanNull)
+          r1   <- getLValueLocInReg (LValueIdent $ MkIdent "foo")
+          r2   <- getLValueLocInReg (LValueIdent $ MkIdent "bar")
           code <- gets Compiler.code
           return (code, r1, r2)
         )
@@ -50,12 +50,9 @@ unit_getLValueLocInReg_Array = do
         ]
   -- foo[2][1]
   let lValue = LValueArrayIndex
-        (Exp (ExpNum 2 spanNull))
-        (LValueArrayIndex (Exp (ExpNum 1 spanNull))
-                          (LValueIdent (MkIdent "foo" spanNull))
-                          spanNull
-        )
-        spanNull
+        (Exp (ExpNum 2))
+        (LValueArrayIndex (Exp (ExpNum 1)) (LValueIdent (MkIdent "foo")))
+
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
         symbols
@@ -82,12 +79,9 @@ unit_getLValueLocInReg_Array_2 = do
         ]
   -- foo[2][1]
   let lValue = LValueArrayIndex
-        (Exp (ExpNum 2 spanNull))
-        (LValueArrayIndex (Exp (ExpNum 1 spanNull))
-                          (LValueIdent (MkIdent "foo" spanNull))
-                          spanNull
-        )
-        spanNull
+        (Exp (ExpNum 2))
+        (LValueArrayIndex (Exp (ExpNum 1)) (LValueIdent (MkIdent "foo")))
+
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
         symbols
@@ -120,16 +114,12 @@ unit_getLValueLocInReg_Array_3D = do
         ]
   -- foo[5][3][7]
   let lValue = LValueArrayIndex
-        (Exp (ExpNum 5 spanNull))
+        (Exp (ExpNum 5))
         (LValueArrayIndex
-          (Exp (ExpNum 3 spanNull))
-          (LValueArrayIndex (Exp (ExpNum 7 spanNull))
-                            (LValueIdent (MkIdent "foo" spanNull))
-                            spanNull
-          )
-          spanNull
+          (Exp (ExpNum 3))
+          (LValueArrayIndex (Exp (ExpNum 7)) (LValueIdent (MkIdent "foo")))
         )
-        spanNull
+
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
         symbols
@@ -152,18 +142,15 @@ unit_assign = do
                  }
         ]
   let lhs = LValueArrayIndex
-        (Exp $ ExpNum 1 spanNull)
-        (LValueArrayIndex (Exp $ ExpNum 2 spanNull)
-                          (LValueIdent (MkIdent "bar" spanNull))
-                          spanNull
-        )
-        spanNull
-  let rhs = (Exp $ ExpNum 100 spanNull)
+        (Exp $ ExpNum 1)
+        (LValueArrayIndex (Exp $ ExpNum 2) (LValueIdent (MkIdent "bar")))
+
+  let rhs = (Exp $ ExpNum 100)
   let code = fromRight' $ flip
         Compiler.runCompiler
         symbols
         (do
-          execStmtAssign (MkStmtAssign lhs rhs spanNull)
+          execStmtAssign (MkStmtAssign lhs rhs)
           gets Compiler.code
         )
   let simulator = Simulator.run (Simulator.init code)
@@ -188,28 +175,21 @@ unit_Index_Using_Variable = do
                  }
         ]
   let lhs = LValueArrayIndex
-        (LValue $ LValueIdent (MkIdent "i" spanNull))
-        (LValueArrayIndex (LValue $ LValueIdent (MkIdent "j" spanNull))
-                          (LValueIdent (MkIdent "bar" spanNull))
-                          spanNull
+        (LValue $ LValueIdent (MkIdent "i"))
+        (LValueArrayIndex (LValue $ LValueIdent (MkIdent "j"))
+                          (LValueIdent (MkIdent "bar"))
         )
-        spanNull
-  let rhs = (Exp $ ExpNum 100 spanNull)
+
+  let rhs = (Exp $ ExpNum 100)
   let code = fromRight' $ flip
         Compiler.runCompiler
         symbols
         (do
           execStmtAssign
-            (MkStmtAssign (LValueIdent (MkIdent "i" spanNull))
-                          (Exp $ ExpNum 1 spanNull)
-                          spanNull
-            )
+            (MkStmtAssign (LValueIdent (MkIdent "i")) (Exp $ ExpNum 1))
           execStmtAssign
-            (MkStmtAssign (LValueIdent (MkIdent "j" spanNull))
-                          (Exp $ ExpNum 2 spanNull)
-                          spanNull
-            )
-          execStmtAssign (MkStmtAssign lhs rhs spanNull)
+            (MkStmtAssign (LValueIdent (MkIdent "j")) (Exp $ ExpNum 2))
+          execStmtAssign (MkStmtAssign lhs rhs)
           gets Compiler.code
         )
   let simulator = Simulator.run (Simulator.init code)

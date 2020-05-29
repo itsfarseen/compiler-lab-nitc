@@ -30,7 +30,7 @@ execStmtDeclare _ = return ()
 
 execStmtAssign :: (CompilerClass m) => StmtAssign -> m ()
 execStmtAssign stmt = do
-  let (MkStmtAssign lhs rhs _) = stmt
+  let (MkStmtAssign lhs rhs) = stmt
   rhsReg    <- getRValueInReg rhs
   lhsLocReg <- getLValueLocInReg lhs
   appendCode [XSM_MOV_IndDst lhsLocReg rhsReg]
@@ -40,7 +40,7 @@ execStmtAssign stmt = do
 
 execStmtRead :: (CompilerClass m) => StmtRead -> m ()
 execStmtRead stmt = do
-  let MkStmtRead lValue _ = stmt
+  let MkStmtRead lValue = stmt
   lValueLocReg <- getLValueLocInReg lValue
   t1           <- getFreeReg
   let code =
@@ -64,14 +64,14 @@ execStmtRead stmt = do
 
 execStmtWrite :: (CompilerClass m) => StmtWrite -> m ()
 execStmtWrite stmt = do
-  let MkStmtWrite rValue _ = stmt
+  let MkStmtWrite rValue = stmt
   reg <- getRValueInReg rValue
   printReg reg
   releaseReg reg
 
 execStmtIf :: (CompilerClass m) => StmtIf -> m ()
 execStmtIf stmt = do
-  let MkStmtIf condition stmts _ = stmt
+  let MkStmtIf condition stmts = stmt
   condReg  <- getRValueInReg condition
   endLabel <- getNewLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JZ condReg endLabel]
@@ -81,7 +81,7 @@ execStmtIf stmt = do
 
 execStmtIfElse :: (CompilerClass m) => StmtIfElse -> m ()
 execStmtIfElse stmt = do
-  let MkStmtIfElse condition stmtsThen stmtsElse _ = stmt
+  let MkStmtIfElse condition stmtsThen stmtsElse = stmt
   condReg   <- getRValueInReg condition
   elseLabel <- getNewLabel
   endLabel  <- getNewLabel
@@ -108,7 +108,7 @@ loopBody body = do
 
 execStmtWhile :: (CompilerClass m) => StmtWhile -> m ()
 execStmtWhile stmt = do
-  let MkStmtWhile condition stmts _ = stmt
+  let MkStmtWhile condition stmts = stmt
   loopBody $ \startLabel endLabel -> do
     r <- getRValueInReg condition
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
@@ -118,7 +118,7 @@ execStmtWhile stmt = do
 
 execStmtDoWhile :: (CompilerClass m) => StmtDoWhile -> m ()
 execStmtDoWhile stmt = do
-  let MkStmtDoWhile condition stmts _ = stmt
+  let MkStmtDoWhile condition stmts = stmt
   loopBody $ \startLabel endLabel -> do
     mapM_ execStmt stmts
     r <- getRValueInReg condition
@@ -177,7 +177,7 @@ getLValueLocInReg lValue = do
       loc <- getIdentLocInStack ident
       appendCode [XSM_MOV_Int reg loc]
       return (reg, dataTypeSize dataType)
-    LValueArrayIndex index lValue _ -> case dataType of
+    LValueArrayIndex index lValue -> case dataType of
       DataTypeArray dim innerType -> do
         (reg, innerSize) <- getLValueLocInReg' innerType lValue
         indexReg         <- getRValueInReg index
@@ -192,13 +192,13 @@ getLValueLocInReg lValue = do
 
 getRValueInReg :: (CompilerClass m) => RValue -> m Reg
 getRValueInReg rValue = case rValue of
-  (Exp (ExpNum i _)) -> do
+  (Exp (ExpNum i)) -> do
     reg <- getFreeReg
     appendCode [XSM_MOV_Int reg i]
     return reg
-  (Exp    (ExpArithmetic e1 op e2 _)) -> execALUInstr (arithOpInstr op) e1 e2
-  (Exp    (ExpLogical    e1 op e2 _)) -> execALUInstr (logicOpInstr op) e1 e2
-  (LValue lValue                    ) -> do
+  (Exp    (ExpArithmetic e1 op e2)) -> execALUInstr (arithOpInstr op) e1 e2
+  (Exp    (ExpLogical    e1 op e2)) -> execALUInstr (logicOpInstr op) e1 e2
+  (LValue lValue                  ) -> do
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
