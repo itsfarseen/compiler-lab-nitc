@@ -103,7 +103,9 @@ Stmt:
     | Stmt ';'              {$1}
 
 StmtDeclare:
-    DataType ident ';'       {% mkStmtDeclare (spanWVal $2) (spanWVal $1) (getSpanBwn $1 $3)}
+      PrimitiveType ident ';'       {% mkStmtDeclare (spanWVal $2) (spanWVal $1) [] (getSpanBwn $1 $3)}
+    | PrimitiveType Dims ident ';'  {% mkStmtDeclare (spanWVal $3) (spanWVal $1) (spanWVal $2) (getSpanBwn $1 $4)}
+    | PrimitiveType ident Dims ';'  {% mkStmtDeclare (spanWVal $2) (spanWVal $1) (spanWVal $3) (getSpanBwn $1 $4)}
 
 StmtAssign:
     LValue '=' RValue ';'    {% mkStmtAssign (spanWVal $1) (spanWVal $3) (getSpanBwn $1 $3)}
@@ -176,12 +178,16 @@ StmtContinue:
       continue ';'        {% mkStmtContinue (getSpan $1)}
 
 LValue:
-      Ident                 {fmap LValueIdent $1}
-    | LValue '[' RValue ']' {% (mkArrayIndex $1 $3) <&> flip SpanW (getSpanBwn $1 $4)}
+      Ident               {% mkLValue $1 [] <&> flip SpanW (getSpan $1)}
+    | Ident Indices       {% mkLValue $1 (spanWVal $2) <&> flip SpanW (getSpanBwn $1 $2)}
+    
+Indices:
+      '[' RValue ']'          {SpanW ([$2]) (getSpanBwn $1 $3)}
+    | Indices '[' RValue ']'  {SpanW (spanWVal $1 ++ [$3]) (getSpanBwn $1 $4)}
 
 RValue:
-      LValue              {fmap LValue $1}
-    | Exp                 {fmap Exp $1}
+      LValue             {fmap RLValue $1}
+    | Exp                {fmap RExp $1}
 
 Ident:
      ident                {% (mkIdent $1) <&> flip SpanW (getSpan $1)}
@@ -196,26 +202,20 @@ Exp:
    | RValue '%' RValue    {% (mkExpArithmetic $1 OpMod $3) <&> flip SpanW (getSpanBwn $1 $3)}
    | RValue '<' RValue    {% (mkExpLogical $1 OpLT  $3) <&> flip SpanW (getSpanBwn $1 $3)}
    | RValue '>' RValue    {% (mkExpLogical $1 OpGT  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '<=' RValue    {% (mkExpLogical $1 OpLE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '>=' RValue    {% (mkExpLogical $1 OpGE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '==' RValue    {% (mkExpLogical $1 OpEQ  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '!=' RValue    {% (mkExpLogical $1 OpNE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '<=' RValue   {% (mkExpLogical $1 OpLE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '>=' RValue   {% (mkExpLogical $1 OpGE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '==' RValue   {% (mkExpLogical $1 OpEQ  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '!=' RValue   {% (mkExpLogical $1 OpNE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
 
--- ExpArrayIndex:
+PrimitiveType:
+    int                     {SpanW TypeInt (getSpan $1)}
+  | bool                    {SpanW TypeBool (getSpan $1)}
 
-DataType:
-    int                     {SpanW DataTypeInt (getSpan $1)}
-  | bool                    {SpanW DataTypeBool (getSpan $1)}
-  | DataType '[' number ']' {SpanW (dataTypeReverseAddDim (spanWVal $1) (spanWVal $3)) (getSpanBwn $1 $4)}
+Dims:
+    '[' number ']'          {SpanW ([spanWVal $2]) (getSpanBwn $1 $3)}
+  | Dims '[' number ']'     {SpanW (spanWVal $1 ++ [spanWVal $3]) (getSpanBwn $1 $4)}
 
 {
-
-dataTypeReverseAddDim :: DataType -> Int -> DataType
-dataTypeReverseAddDim dataType size = case dataType of
-  DataTypeInt  -> DataTypeArray size dataType
-  DataTypeBool -> DataTypeArray size dataType
-  DataTypeArray size' inner ->
-    DataTypeArray size' (dataTypeReverseAddDim inner size)
 
 parseError :: Token -> Frontend a
 parseError token = throwError $ Error.customError ("Parsing error 2: " ++ (show token)) $ getSpan token

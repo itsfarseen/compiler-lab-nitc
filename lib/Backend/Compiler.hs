@@ -53,9 +53,10 @@ buildSymbolTable symbols locLast locNext = case symbols of
   [] -> ([], locLast)
   (sym : syms) ->
     let Grammar.Symbol { symName, symDataType } = sym
-        size             = Grammar.dataTypeSize (symDataType)
-        loc              = locNext
-        (syms', locLast) = buildSymbolTable syms loc (loc + size)
+        Grammar.DataType dims _ = symDataType
+        size                    = product dims
+        loc                     = locNext
+        (syms', locLast)        = buildSymbolTable syms loc (loc + size)
     in  ((Symbol { symName, symDataType, symRelLoc = loc } : syms'), locLast)
 
 

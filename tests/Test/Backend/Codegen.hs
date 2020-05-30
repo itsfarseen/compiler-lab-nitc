@@ -16,11 +16,11 @@ spanNull = Span 0 0
 unit_getLValueLocInReg_Simple = do
   let symbols =
         [ Symbol { symName     = "foo"
-                 , symDataType = DataTypeInt
+                 , symDataType = DataType [] TypeInt
                  , symDeclSpan = spanNull
                  }
         , Symbol { symName     = "bar"
-                 , symDataType = DataTypeInt
+                 , symDataType = DataType [] TypeInt
                  , symDeclSpan = spanNull
                  }
         ]
@@ -28,8 +28,8 @@ unit_getLValueLocInReg_Simple = do
         Compiler.runCompiler
         symbols
         (do
-          r1   <- getLValueLocInReg (LValueIdent $ MkIdent "foo")
-          r2   <- getLValueLocInReg (LValueIdent $ MkIdent "bar")
+          r1   <- getLValueLocInReg (LValue [] $ MkIdent "foo")
+          r2   <- getLValueLocInReg (LValue [] $ MkIdent "bar")
           code <- gets Compiler.code
           return (code, r1, r2)
         )
@@ -44,14 +44,12 @@ unit_getLValueLocInReg_Array = do
   let symbols =
         [ -- int foo[3][4]
           Symbol { symName     = "foo"
-                 , symDataType = DataTypeArray 3 (DataTypeArray 4 DataTypeInt)
+                 , symDataType = DataType [3, 4] TypeInt
                  , symDeclSpan = spanNull
                  }
         ]
   -- foo[2][1]
-  let lValue = LValueArrayIndex
-        (Exp (ExpNum 2))
-        (LValueArrayIndex (Exp (ExpNum 1)) (LValueIdent (MkIdent "foo")))
+  let lValue = LValue (fmap (RExp . ExpNum) [2, 1]) (MkIdent "foo")
 
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
@@ -68,19 +66,17 @@ unit_getLValueLocInReg_Array = do
 unit_getLValueLocInReg_Array_2 = do
   let symbols =
         [ Symbol { symName     = "bar"
-                 , symDataType = DataTypeArray 3 (DataTypeArray 4 DataTypeInt)
+                 , symDataType = DataType [3, 4] TypeInt
                  , symDeclSpan = spanNull
                  }
         -- int foo[3][4]
         , Symbol { symName     = "foo"
-                 , symDataType = DataTypeArray 3 (DataTypeArray 4 DataTypeInt)
+                 , symDataType = DataType [3, 4] TypeInt
                  , symDeclSpan = spanNull
                  }
         ]
   -- foo[2][1]
-  let lValue = LValueArrayIndex
-        (Exp (ExpNum 2))
-        (LValueArrayIndex (Exp (ExpNum 1)) (LValueIdent (MkIdent "foo")))
+  let lValue = LValue (fmap (RExp . ExpNum) [2, 1]) (MkIdent "foo")
 
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
@@ -99,26 +95,17 @@ unit_getLValueLocInReg_Array_2 = do
 unit_getLValueLocInReg_Array_3D = do
   let symbols =
         [ Symbol { symName     = "bar"
-                 , symDataType = DataTypeArray 3 (DataTypeArray 4 DataTypeInt)
+                 , symDataType = DataType [3, 4] TypeInt
                  , symDeclSpan = spanNull
                  }
          -- int foo[10][20][7]
-        , Symbol
-          { symName     = "foo"
-          , symDataType = DataTypeArray 10
-                          $ DataTypeArray 20
-                          $ DataTypeArray 7
-                          $ DataTypeInt
-          , symDeclSpan = spanNull
-          }
+        , Symbol { symName     = "foo"
+                 , symDataType = DataType [10, 20, 7] TypeInt
+                 , symDeclSpan = spanNull
+                 }
         ]
   -- foo[5][3][7]
-  let lValue = LValueArrayIndex
-        (Exp (ExpNum 5))
-        (LValueArrayIndex
-          (Exp (ExpNum 3))
-          (LValueArrayIndex (Exp (ExpNum 7)) (LValueIdent (MkIdent "foo")))
-        )
+  let lValue = LValue (fmap (RExp . ExpNum) [5, 3, 7]) (MkIdent "foo")
 
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
@@ -137,15 +124,13 @@ unit_getLValueLocInReg_Array_3D = do
 unit_assign = do
   let symbols =
         [ Symbol { symName     = "bar"
-                 , symDataType = DataTypeArray 3 (DataTypeArray 4 DataTypeInt)
+                 , symDataType = DataType [3, 4] TypeInt
                  , symDeclSpan = spanNull
                  }
         ]
-  let lhs = LValueArrayIndex
-        (Exp $ ExpNum 1)
-        (LValueArrayIndex (Exp $ ExpNum 2) (LValueIdent (MkIdent "bar")))
+  let lhs = LValue (fmap (RExp . ExpNum) [1, 2]) (MkIdent "bar")
 
-  let rhs = (Exp $ ExpNum 100)
+  let rhs = RExp $ ExpNum 100
   let code = fromRight' $ flip
         Compiler.runCompiler
         symbols
@@ -162,33 +147,29 @@ unit_assign = do
 unit_Index_Using_Variable = do
   let symbols =
         [ Symbol { symName     = "bar"
-                 , symDataType = DataTypeArray 3 (DataTypeArray 4 DataTypeInt)
+                 , symDataType = DataType [3, 4] TypeInt
                  , symDeclSpan = spanNull
                  }
         , Symbol { symName     = "i"
-                 , symDataType = DataTypeInt
+                 , symDataType = DataType [] TypeInt
                  , symDeclSpan = spanNull
                  }
         , Symbol { symName     = "j"
-                 , symDataType = DataTypeInt
+                 , symDataType = DataType [] TypeInt
                  , symDeclSpan = spanNull
                  }
         ]
-  let lhs = LValueArrayIndex
-        (LValue $ LValueIdent (MkIdent "i"))
-        (LValueArrayIndex (LValue $ LValueIdent (MkIdent "j"))
-                          (LValueIdent (MkIdent "bar"))
-        )
-
-  let rhs = (Exp $ ExpNum 100)
+  let lhs = LValue (fmap (RLValue . LValue [] . MkIdent) ["i", "j"])
+                   (MkIdent "bar")
+  let rhs = RExp $ ExpNum 100
   let code = fromRight' $ flip
         Compiler.runCompiler
         symbols
         (do
           execStmtAssign
-            (MkStmtAssign (LValueIdent (MkIdent "i")) (Exp $ ExpNum 1))
+            (MkStmtAssign (LValue [] (MkIdent "i")) (RExp $ ExpNum 1))
           execStmtAssign
-            (MkStmtAssign (LValueIdent (MkIdent "j")) (Exp $ ExpNum 2))
+            (MkStmtAssign (LValue [] (MkIdent "j")) (RExp $ ExpNum 2))
           execStmtAssign (MkStmtAssign lhs rhs)
           gets Compiler.code
         )

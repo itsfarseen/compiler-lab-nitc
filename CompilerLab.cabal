@@ -76,6 +76,7 @@ test-suite test
   main-is:
     Main.hs
   other-modules:
+    Test.Grammar
     Test.Backend.Simulator
     Test.Backend.Codegen
   build-depends:

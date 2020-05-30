@@ -159,46 +159,38 @@ printReg reg = do
 
 getLValueLocInReg :: (CompilerClass m) => LValue -> m Reg
 getLValueLocInReg lValue = do
-  let ident = Grammar.lValueIdent lValue
-  dataType <- getIdentDataType ident
-  (reg, _) <- getLValueLocInReg' dataType lValue
+  let (LValue indices ident) = lValue
+  (DataType dims _) <- getIdentDataType ident
+  (reg, _)          <- getLValueLocInReg' dims indices ident
   return reg
  where
-  getLValueLocInReg' :: (CompilerClass m) => DataType -> LValue -> m (Reg, Int)
-  getLValueLocInReg' dataType lValue = case lValue of
-    LValueIdent ident -> do
-      case dataType of
-        DataTypeArray{} ->
-          error
-            $  "Program bug: Can not getLValueInReg, dataType is Array"
-            ++ (show dataType)
-        _ -> return ()
+  getLValueLocInReg'
+    :: (CompilerClass m) => [Int] -> [RValue] -> Ident -> m (Reg, Int)
+  getLValueLocInReg' dims indices ident = case (dims, indices) of
+    ([], []) -> do
       reg <- getFreeReg
       loc <- getIdentLocInStack ident
       appendCode [XSM_MOV_Int reg loc]
-      return (reg, dataTypeSize dataType)
-    LValueArrayIndex index lValue -> case dataType of
-      DataTypeArray dim innerType -> do
-        (reg, innerSize) <- getLValueLocInReg' innerType lValue
-        indexReg         <- getRValueInReg index
-        t                <- getFreeReg
-        appendCode [XSM_MOV_Int t innerSize]
-        appendCode [XSM_MUL indexReg t]
-        appendCode [XSM_ADD reg indexReg]
-        releaseReg t
-        releaseReg indexReg
-        return (reg, innerSize * dim)
-      _ -> error "Program Bug: Dereferencing non-Array type"
+      return (reg, 1)
+    ([], _ : _) -> error $ "Compiler bug: Too many indices "
+    (_ : _, []) -> error $ "Compiler bug: Too less indices: " ++ (show dims)
+    (d : ds, i : is) -> do
+      (reg, innerSize) <- getLValueLocInReg' ds is ident
+      rhs              <- getRValueInReg i
+      appendCode [XSM_MUL_I rhs innerSize]
+      appendCode [XSM_ADD reg rhs]
+      releaseReg rhs
+      return (reg, innerSize * d)
 
 getRValueInReg :: (CompilerClass m) => RValue -> m Reg
 getRValueInReg rValue = case rValue of
-  (Exp (ExpNum i)) -> do
+  RExp (ExpNum i) -> do
     reg <- getFreeReg
     appendCode [XSM_MOV_Int reg i]
     return reg
-  (Exp    (ExpArithmetic e1 op e2)) -> execALUInstr (arithOpInstr op) e1 e2
-  (Exp    (ExpLogical    e1 op e2)) -> execALUInstr (logicOpInstr op) e1 e2
-  (LValue lValue                  ) -> do
+  RExp    (MkExpArithmetic e1 op e2) -> execALUInstr (arithOpInstr op) e1 e2
+  RExp    (MkExpLogical    e1 op e2) -> execALUInstr (logicOpInstr op) e1 e2
+  RLValue lValue                     -> do
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
