@@ -52,6 +52,7 @@ data Ident = MkIdent String deriving (Show)
 
 data Exp
   = ExpNum Int
+  | ExpStr String
   | MkExpArithmetic RValue OpArithmetic RValue
   | MkExpLogical RValue OpLogical RValue
 
@@ -66,7 +67,7 @@ data Symbol =
     }
     deriving Show
 
-data PrimitiveType = TypeInt | TypeBool
+data PrimitiveType = TypeInt | TypeBool | TypeString
   deriving (Eq, Show)
 
 data DataType
@@ -121,8 +122,9 @@ mkStmtAssign lhs rhs span = do
 mkStmtRead :: (MonadError Error m, ReadSymbols m) => SpanW LValue -> m StmtRead
 mkStmtRead (SpanW lValue lValueSpan) = do
   dataType <- lValueDataType lValue
-  unless (dataType == DataType [] TypeInt) $ throwError $ errTypeNotAllowed
-    [DataType [] TypeInt]
+  let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
+  unless (dataType `elem` allowedTypes) $ throwError $ errTypeNotAllowed
+    allowedTypes
     dataType
     lValueSpan
   return $ MkStmtRead lValue
@@ -131,8 +133,9 @@ mkStmtWrite
   :: (MonadError Error m, ReadSymbols m) => SpanW RValue -> m StmtWrite
 mkStmtWrite (SpanW rValue rValueSpan) = do
   dataType <- rValueDataType rValue
-  unless (dataType == DataType [] TypeInt) $ throwError $ errTypeNotAllowed
-    [DataType [] TypeInt]
+  let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
+  unless (dataType `elem` allowedTypes) $ throwError $ errTypeNotAllowed
+    allowedTypes
     dataType
     rValueSpan
   return $ MkStmtWrite rValue
@@ -244,11 +247,18 @@ mkExpLogical
   -> m Exp
 mkExpLogical (SpanW r1 span1) op (SpanW r2 span2) = do
   dataType1 <- rValueDataType r1
-  unless (dataType1 == DataType [] TypeInt)
-    $ throwError (errTypeNotAllowed [DataType [] TypeInt] dataType1 span1)
+  let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
+  unless (dataType1 `elem` allowedTypes) $ throwError $ errTypeNotAllowed
+    allowedTypes
+    dataType1
+    span1
+
   dataType2 <- rValueDataType r2
-  unless (dataType2 == DataType [] TypeInt)
-    $ throwError (errTypeNotAllowed [DataType [] TypeInt] dataType2 span2)
+  unless (dataType2 `elem` allowedTypes) $ throwError $ errTypeNotAllowed
+    allowedTypes
+    dataType2
+    span2
+
   return $ MkExpLogical r1 op r2
 
 -- Helper Functions
@@ -271,6 +281,7 @@ rValueDataType (RExp    exp) = return $ expDataType exp
 expDataType :: Exp -> DataType
 expDataType exp = case exp of
   ExpNum{}          -> DataType [] TypeInt
+  ExpStr{}          -> DataType [] TypeString
   MkExpArithmetic{} -> DataType [] TypeInt
   MkExpLogical{}    -> DataType [] TypeBool
 

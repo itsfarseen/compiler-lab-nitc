@@ -52,10 +52,12 @@ $sq_bracket_close = \]
 @break       = "break"
 @continue    = "continue"
 @int         = "int"
+@string      = "string"
 @bool        = "bool"
 
 @number      = [0-9]+
-@ident       = [a-z]
+@strlit      = \"[^\"]*\"
+@ident       = [a-z_][a-z0-9_]*
 
 tokens :-
     $white+      ;
@@ -97,9 +99,11 @@ tokens :-
     @break       {token TokenBreak}
     @continue    {token TokenContinue}
     @int         {token TokenInt}
+    @string      {token TokenString}
     @bool        {token TokenBool}
 
     @number      {tokenInt TokenNumber}
+    @strlit      {tokenStr TokenStrLit}
     @ident       {tokenStr TokenIdent}
 
 {

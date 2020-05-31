@@ -188,6 +188,10 @@ getRValueInReg rValue = case rValue of
     reg <- getFreeReg
     appendCode [XSM_MOV_Int reg i]
     return reg
+  RExp (ExpStr s) -> do
+    reg <- getFreeReg
+    appendCode [XSM_MOV_Str reg s]
+    return reg
   RExp    (MkExpArithmetic e1 op e2) -> execALUInstr (arithOpInstr op) e1 e2
   RExp    (MkExpLogical    e1 op e2) -> execALUInstr (logicOpInstr op) e1 e2
   RLValue lValue                     -> do

@@ -24,6 +24,7 @@ import Data.Functor
 
 %token
     number   {TokenNumber    $$}
+    strlit   {TokenStrLit    $$}
     ident    {TokenIdent     $$}
  
     '+'      {TokenPlus      _ }
@@ -194,6 +195,7 @@ Ident:
 
 Exp: 
      number               {fmap ExpNum $1}
+   | strlit               {fmap ExpStr $1}
    | '(' Exp ')'          {$2}
    | RValue '+' RValue    {% (mkExpArithmetic $1 OpAdd $3) <&> flip SpanW (getSpanBwn $1 $3)}
    | RValue '-' RValue    {% (mkExpArithmetic $1 OpSub $3) <&> flip SpanW (getSpanBwn $1 $3)}
@@ -210,6 +212,7 @@ Exp:
 PrimitiveType:
     int                     {SpanW TypeInt (getSpan $1)}
   | bool                    {SpanW TypeBool (getSpan $1)}
+  | string                  {SpanW TypeString (getSpan $1)}
 
 Dims:
     '[' number ']'          {SpanW ([spanWVal $2]) (getSpanBwn $1 $3)}

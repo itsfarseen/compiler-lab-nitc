@@ -45,6 +45,7 @@ data Token
   | TokenString Span
   -- Constants, Identifier
   | TokenNumber (SpanW Int)
+  | TokenStrLit (SpanW String)
   | TokenIdent (SpanW String)
   -- EOF
   | TokenEOF Span
@@ -93,6 +94,7 @@ instance HasSpan Token where
     TokenString         span           -> span
     -- Constants, Identifier
     TokenNumber         (SpanW _ span) -> span
+    TokenStrLit         (SpanW _ span) -> span
     TokenIdent          (SpanW _ span) -> span
     -- EOF
     TokenEOF            span           -> span
