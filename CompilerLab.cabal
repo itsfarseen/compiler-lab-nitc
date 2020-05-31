@@ -37,7 +37,7 @@ library
   hs-source-dirs:
       lib
   -- ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -O0
+  ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS
   build-depends:
       base
     , flow
@@ -55,7 +55,7 @@ library
 
 executable CompilerLab
   main-is: Main.hs
-  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -O0
+  ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS
   hs-source-dirs:
     src
   build-depends:
@@ -88,4 +88,4 @@ test-suite test
     , tasty
     , tasty-hunit
     , tasty-discover
-  ghc-options: -Wall -Wno-name-shadowing -Wno-missing-signatures -O0
+  ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS
