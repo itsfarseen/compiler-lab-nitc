@@ -31,6 +31,7 @@ $gt          = \>
 $equals      = \=
 
 $semi_colon  = \;
+$comma       = \,
 $par_open    = \(
 $par_close   = \)
 $brace_open  = \{
@@ -78,6 +79,7 @@ tokens :-
     $equals      {token TokenEquals}
 
     $semi_colon  {token TokenSemiColon}
+    $comma       {token TokenComma}
     $par_open    {token TokenParOpen}
     $par_close   {token TokenParClose}
     $brace_open  {token TokenBraceOpen}

@@ -43,6 +43,7 @@ import Data.Functor
     ']'      {TokenSqBracketClose _}
 
     ';'      {TokenSemiColon _ }
+    ','      {TokenComma     _ }
     '='      {TokenEquals    _ }
 
     '<'      {TokenLT        _ }
@@ -87,26 +88,38 @@ Program:
     | begin end             {Program {stmts=[]}}
 
 Slist:
-      Slist Stmt            {$1 ++ [$2]}
-    | Stmt                  {[$1]}
+      Slist Stmt            {$1 ++ $2}
+    | Stmt                  {$1}
 
 Stmt:
-      StmtDeclare           {StmtDeclare $1}
-    | StmtAssign            {StmtAssign $1}
-    | StmtRead              {StmtRead $1}
-    | StmtWrite             {StmtWrite $1}
-    | StmtIf                {StmtIf $1}
-    | StmtIfElse            {StmtIfElse $1}
-    | StmtWhile             {StmtWhile $1}
-    | StmtDoWhile           {StmtDoWhile $1}
-    | StmtBreak             {StmtBreak $1}
-    | StmtContinue          {StmtContinue $1}
+      StmtDeclare           {fmap StmtDeclare $1}
+    | StmtAssign            {[StmtAssign $1]}
+    | StmtRead              {[StmtRead $1]}
+    | StmtWrite             {[StmtWrite $1]}
+    | StmtIf                {[StmtIf $1]}
+    | StmtIfElse            {[StmtIfElse $1]}
+    | StmtWhile             {[StmtWhile $1]}
+    | StmtDoWhile           {[StmtDoWhile $1]}
+    | StmtBreak             {[StmtBreak $1]}
+    | StmtContinue          {[StmtContinue $1]}
     | Stmt ';'              {$1}
 
 StmtDeclare:
-      PrimitiveType ident ';'       {% mkStmtDeclare (spanWVal $2) (spanWVal $1) [] (getSpanBwn $1 $3)}
-    | PrimitiveType Dims ident ';'  {% mkStmtDeclare (spanWVal $3) (spanWVal $1) (spanWVal $2) (getSpanBwn $1 $4)}
-    | PrimitiveType ident Dims ';'  {% mkStmtDeclare (spanWVal $2) (spanWVal $1) (spanWVal $3) (getSpanBwn $1 $4)}
+      PrimitiveType Idents ';'      {% mapM (\x -> mkStmtDeclare (spanWVal x) (spanWVal $1) [] (getSpanBwn $1 $3)) $2}
+    | PrimitiveType Dims Idents ';' {% mapM (\x -> mkStmtDeclare (spanWVal x) (spanWVal $1) (spanWVal $2) (getSpanBwn $1 $4)) $3}
+    | PrimitiveType IdentDims ';'   {% mapM (\x -> mkStmtDeclare (spanWVal (fst x)) (spanWVal $1) (spanWVal (snd x)) (getSpanBwn $1 $3)) $2}
+
+Idents:
+      ident                         {[$1]}
+    | Idents ',' ident              {$1 ++ [$3]}
+
+IdentDim:
+      ident                         {($1, SpanW [] (Span 0 0))}
+    | ident Dims                    {($1, $2)}
+
+IdentDims:
+      IdentDim                      {[$1]}
+    | IdentDims ',' IdentDim        {$1 ++ [$3]}
 
 StmtAssign:
     LValue '=' RValue ';'    {% mkStmtAssign (spanWVal $1) (spanWVal $3) (getSpanBwn $1 $3)}

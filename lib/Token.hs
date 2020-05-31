@@ -20,6 +20,7 @@ data Token
   | TokenEquals Span
   -- Punctuation
   | TokenSemiColon Span
+  | TokenComma Span
   | TokenParOpen Span
   | TokenParClose Span
   | TokenBraceOpen Span
@@ -69,6 +70,7 @@ instance HasSpan Token where
     TokenEquals         span           -> span
     -- Punctuation
     TokenSemiColon      span           -> span
+    TokenComma          span           -> span
     TokenParOpen        span           -> span
     TokenParClose       span           -> span
     TokenBraceOpen      span           -> span
