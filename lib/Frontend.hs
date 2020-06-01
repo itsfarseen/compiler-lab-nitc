@@ -19,6 +19,7 @@ data FrontendData =
   FrontendData
     { alexInput :: AlexInput
     , symbols :: [Symbol]
+    , funcs :: [Func]
     , loopStack :: LoopStack
     }
 
@@ -39,31 +40,45 @@ initData sourceCode =
   let alexInput = AlexInput { alexInputStr    = UString.encode sourceCode
                             , alexTokenOffset = 0
                             }
-  in  FrontendData { alexInput, symbols = [], loopStack = LoopStack.init }
+  in  FrontendData { alexInput
+                   , symbols   = []
+                   , funcs     = []
+                   , loopStack = LoopStack.init
+                   }
 
 runFrontend :: FrontendData -> Frontend a -> Either Error a
 runFrontend initData (Frontend state) = runExcept $ evalStateT state initData
 
 -- Instances
 
+insertList :: Eq k => (a -> k) -> a -> [a] -> [a]
+insertList key a list = case list of
+  [] -> [a]
+  (a' : as') ->
+    (if key a == key a' then a : as' else a' : insertList key a as')
+
+
 instance ReadSymbols Frontend where
   symLookup name = gets $ (find $ \s -> symName s == name) . symbols
 
 instance WriteSymbols Frontend where
-  symInsert symbol = do
-    let name = symName symbol
-    maybeSymbol <- symLookup name
-    case maybeSymbol of
-      Just symbol -> return $ Left $ SymbolExists symbol
-      Nothing     -> do
-        modify $ \frontendData ->
-          frontendData { symbols = (symbols frontendData) ++ [symbol] }
-        return $ Right ()
+  symInsert symbol = modify $ \frontendData -> frontendData
+    { symbols = insertList symName symbol (symbols frontendData)
+    }
+
+instance ReadFuncs Frontend where
+  funcLookup name =
+    gets $ (find $ \s -> (funcName . funcDecl $ s) == name) . funcs
+
+instance WriteFuncs Frontend where
+  funcInsert func = modify $ \frontendData -> frontendData
+    { funcs = insertList (funcName . funcDecl) func (funcs frontendData)
+    }
 
 instance LoopStackReader Frontend where
-  -- getLoopStack :: m LoopStack
   getLoopStack = gets loopStack
 
 instance LoopStackWriter Frontend where
-  -- getLoopStack :: m LoopStack
   putLoopStack loopStack = modify $ \frontendData -> frontendData { loopStack }
+
+instance SymbolTableStack Frontend where

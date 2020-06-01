@@ -11,8 +11,10 @@ import Backend.Codegen
 import qualified Backend.Compiler as Compiler
 import qualified Backend.Simulator as Simulator
 
+spanNull :: Span
 spanNull = Span 0 0
 
+unit_getLValueLocInReg_Simple :: Assertion
 unit_getLValueLocInReg_Simple = do
   let symbols =
         [ Symbol { symName     = "foo"
@@ -40,6 +42,7 @@ unit_getLValueLocInReg_Simple = do
   loc2 @?= 4097
 
 
+unit_getLValueLocInReg_Array :: Assertion
 unit_getLValueLocInReg_Array = do
   let symbols =
         [ -- int foo[3][4]
@@ -63,6 +66,7 @@ unit_getLValueLocInReg_Array = do
   let loc       = Simulator.getRegVal reg simulator
   loc @?= 4096 + 2 * 4 + 1
 
+unit_getLValueLocInReg_Array_2 :: Assertion
 unit_getLValueLocInReg_Array_2 = do
   let symbols =
         [ Symbol { symName     = "bar"
@@ -92,6 +96,7 @@ unit_getLValueLocInReg_Array_2 = do
 
 
 
+unit_getLValueLocInReg_Array_3D :: Assertion
 unit_getLValueLocInReg_Array_3D = do
   let symbols =
         [ Symbol { symName     = "bar"
@@ -121,6 +126,7 @@ unit_getLValueLocInReg_Array_3D = do
 
 
 
+unit_assign :: Assertion
 unit_assign = do
   let symbols =
         [ Symbol { symName     = "bar"
@@ -144,6 +150,7 @@ unit_assign = do
   val @?= 100
 
 
+unit_Index_Using_Variable :: Assertion
 unit_Index_Using_Variable = do
   let symbols =
         [ Symbol { symName     = "bar"

@@ -32,6 +32,7 @@ data CompilerState =
     , symbolTableLastLoc :: Int
     }
 
+initCompilerState :: [Grammar.Symbol] -> CompilerState
 initCompilerState symbols = CompilerState { freeRegs           = [R0 .. R19]
                                           , code               = []
                                           , labels             = HM.empty
@@ -49,6 +50,14 @@ data Symbol = Symbol {
     symRelLoc :: Int
   }
 
+data Func = Func {
+    funcName :: String
+  , funcBody :: [Grammar.Stmt]
+  , funcArgs :: [Symbol]
+  , funcLocalVars :: [Symbol]
+}
+
+buildSymbolTable :: [Grammar.Symbol] -> Int -> Int -> ([Symbol], Int)
 buildSymbolTable symbols locLast locNext = case symbols of
   [] -> ([], locLast)
   (sym : syms) ->
@@ -64,13 +73,11 @@ runCompiler :: Compiler a -> [Grammar.Symbol] -> Either Error a
 runCompiler compiler symbols = evalStateT compiler (initCompilerState symbols)
 
 instance Idents Compiler where
-  getIdentLocInStack ident = (4096 +) <$> gets
+  getIdentLocInStack identName = (4096 +) <$> gets
     (symRelLoc . fromJust . find (\s -> symName s == identName) . symbolTable)
-    where Grammar.MkIdent identName = ident
 
-  getIdentDataType ident = gets
+  getIdentDataType identName = gets
     (symDataType . fromJust . find (\s -> symName s == identName) . symbolTable)
-    where Grammar.MkIdent identName = ident
 
 instance FreeRegs Compiler where
   getFreeReg = do

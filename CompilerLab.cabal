@@ -88,4 +88,5 @@ test-suite test
     , tasty
     , tasty-hunit
     , tasty-discover
+    , test-fixture
   ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS

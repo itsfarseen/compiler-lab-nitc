@@ -14,19 +14,14 @@ parseProgram program = do
 
 execStmt :: (CompilerClass m) => Stmt -> m ()
 execStmt stmt = case stmt of
-  StmtDeclare  stmt -> execStmtDeclare stmt
   StmtAssign   stmt -> execStmtAssign stmt
   StmtRead     stmt -> execStmtRead stmt
   StmtWrite    stmt -> execStmtWrite stmt
   StmtIf       stmt -> execStmtIf stmt
   StmtIfElse   stmt -> execStmtIfElse stmt
   StmtWhile    stmt -> execStmtWhile stmt
-  StmtDoWhile  stmt -> execStmtDoWhile stmt
   StmtBreak    stmt -> execStmtBreak stmt
   StmtContinue stmt -> execStmtContinue stmt
-
-execStmtDeclare :: (CompilerClass m) => StmtDeclare -> m ()
-execStmtDeclare _ = return ()
 
 execStmtAssign :: (CompilerClass m) => StmtAssign -> m ()
 execStmtAssign stmt = do
@@ -116,16 +111,6 @@ execStmtWhile stmt = do
     mapM_ execStmt stmts
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
 
-execStmtDoWhile :: (CompilerClass m) => StmtDoWhile -> m ()
-execStmtDoWhile stmt = do
-  let MkStmtDoWhile condition stmts = stmt
-  loopBody $ \startLabel endLabel -> do
-    mapM_ execStmt stmts
-    r <- getRValueInReg condition
-    appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
-    releaseReg r
-    appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
-
 execStmtBreak :: (CompilerClass m) => StmtBreak -> m ()
 execStmtBreak _ = do
   endLabel <- peekLoopBreakLabel
@@ -165,17 +150,17 @@ getLValueLocInReg lValue = do
   return reg
  where
   getLValueLocInReg'
-    :: (CompilerClass m) => [Int] -> [RValue] -> Ident -> m (Reg, Int)
-  getLValueLocInReg' dims indices ident = case (dims, indices) of
+    :: (CompilerClass m) => [Int] -> [RValue] -> String -> m (Reg, Int)
+  getLValueLocInReg' dims indices identName = case (dims, indices) of
     ([], []) -> do
       reg <- getFreeReg
-      loc <- getIdentLocInStack ident
+      loc <- getIdentLocInStack identName
       appendCode [XSM_MOV_Int reg loc]
       return (reg, 1)
     ([], _ : _) -> error $ "Compiler bug: Too many indices "
     (_ : _, []) -> error $ "Compiler bug: Too less indices: " ++ (show dims)
     (d : ds, i : is) -> do
-      (reg, innerSize) <- getLValueLocInReg' ds is ident
+      (reg, innerSize) <- getLValueLocInReg' ds is identName
       rhs              <- getRValueInReg i
       appendCode [XSM_MUL_I rhs innerSize]
       appendCode [XSM_ADD reg rhs]
@@ -228,8 +213,8 @@ logicOpInstr op = case op of
 
 
 class Monad m => Idents m where
-  getIdentLocInStack :: Ident -> m Int
-  getIdentDataType :: Ident -> m DataType
+  getIdentLocInStack :: String -> m Int
+  getIdentDataType :: String -> m DataType
 
 class Monad m => FreeRegs m where
   getFreeReg :: m Reg

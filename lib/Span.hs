@@ -21,6 +21,7 @@ data SpanW a =
 instance Functor SpanW where
   fmap f (SpanW a span) = SpanW (f a) span
 
+spanWVal :: SpanW a -> a
 spanWVal (SpanW a _) = a
 
 class HasSpan a where
@@ -29,6 +30,7 @@ class HasSpan a where
 instance HasSpan (SpanW a) where
   getSpan (SpanW _ span) = span
 
+getSpanBwn :: (HasSpan a, HasSpan b) => a -> b -> Span
 getSpanBwn a b = getSpan a <-> getSpan b
 
 data FullSpan =
