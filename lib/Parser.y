@@ -118,25 +118,25 @@ DoVarDeclare:
 IdentDims :: {[(SpanW String, SpanW [Int])]}
 IdentDims:
       ident Dims        { [($1, $2)] }
-    | IdentDims ',' ident Dims 
+    | IdentDims ',' ident Dims
                         { $1 ++ [($3, $4)] }
 
 StmtAssign :: {StmtAssign}
 StmtAssign:
     LValue '=' RValue ';'
-                        {% mkStmtAssign 
-                            (spanWVal $1) 
-                            (spanWVal $3) 
+                        {% mkStmtAssign
+                            (spanWVal $1)
+                            (spanWVal $3)
                             (getSpanBwn $1 $3)}
 
 StmtRead :: {StmtRead}
 StmtRead:
-    read '(' LValue ')' ';'  
+    read '(' LValue ')' ';'
                         {% mkStmtRead $3 }
 
 StmtWrite :: {StmtWrite}
 StmtWrite:
-    write '(' RValue ')' ';' 
+    write '(' RValue ')' ';'
                         {% mkStmtWrite $3 }
 
 StmtIf :: {StmtIf}
@@ -156,14 +156,14 @@ StmtIfElse:
 
 StmtWhileEnter :: {SpanW RValue}
 StmtWhileEnter:
-      while '(' RValue ')' do 
-                        {% pushLoopStack >> return $3 }
+      while '(' RValue ')' do
+                        {% pushLoop >> return $3 }
 
 StmtWhile :: {StmtWhile}
 StmtWhile:
       StmtWhileEnter
         Slist
-      endwhile          {% popLoopStack >> mkStmtWhile $1 $2 }
+      endwhile          {% popLoop >> mkStmtWhile $1 $2 }
 
 StmtBreak :: {StmtBreak}
 StmtBreak:
@@ -175,9 +175,9 @@ StmtContinue:
 
 FunctionArg :: {SpanW (String, PrimitiveType)}
 FunctionArg:
-    PrimitiveType ident 
+    PrimitiveType ident
                         { SpanW (spanWVal $2, spanWVal $1) (getSpanBwn $1 $2) }
-    
+
 FunctionArgList :: {[SpanW (String, PrimitiveType)]}
 FunctionArgList:
       FunctionArg
@@ -188,36 +188,28 @@ FunctionArgList:
 DoFuncDeclare :: {()}
 DoFuncDeclare:
       PrimitiveType ident '(' ')' ';'
-                        {% doFuncDeclare 
-                            (spanWVal $1) 
-                            (spanWVal $2) 
-                            [] 
+                        {% doFuncDeclare
+                            (spanWVal $1)
+                            (spanWVal $2)
+                            []
                             (getSpanBwn $1 $5) }
     | PrimitiveType ident '(' FunctionArgList ')' ';'
-                        {% doFuncDeclare 
-                            (spanWVal $1) 
-                            (spanWVal $2) 
+                        {% doFuncDeclare
+                            (spanWVal $1)
+                            (spanWVal $2)
                             (fmap (fmap snd) $4)
                             (getSpanBwn $1 $6) }
 
 FuncDefineEnter:
-      PrimitiveType ident '(' ')'  
-                        {% symStackPush >> return ($1, $2, [], $4) }
-    | PrimitiveType ident '(' FunctionArgList ')'  
-                        {% symStackPush >> return ($1, $2, $4, $5) }
+      PrimitiveType ident '(' ')'
+                        {% doFuncDefine (spanWVal $1) (spanWVal $2) [] (getSpanBwn $1 $4) }
+    | PrimitiveType ident '(' FunctionArgList ')'
+                        {% doFuncDefine (spanWVal $1) (spanWVal $2) $4 (getSpanBwn $1 $5) }
 
 DoFuncDefine :: {()}
 DoFuncDefine:
       FuncDefineEnter '{' Slist '}'
-                        {% symStackPop >>= 
-                              \localSymbols ->
-                                  doFuncDefine
-                                    (spanWVal $ fst4 $1) 
-                                    (spanWVal $ snd4 $1) 
-                                    (thd4 $1)
-                                    localSymbols
-                                    (getSpanBwn (fst4 $1) (frth4 $1))
-                                    $3 }
+                        {% $1 $3 }
 
 LValue :: {SpanW LValue}
 LValue:
@@ -227,7 +219,7 @@ LValue:
 Indices :: {SpanW [SpanW RValue]}
 Indices:
       '[' RValue ']'    { SpanW ([$2]) (getSpanBwn $1 $3) }
-    | Indices '[' RValue ']' 
+    | Indices '[' RValue ']'
                         { SpanW (spanWVal $1 ++ [$3]) (getSpanBwn $1 $4) }
 
 RValue :: {SpanW RValue}

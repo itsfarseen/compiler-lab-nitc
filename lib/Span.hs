@@ -5,7 +5,7 @@ data Span =
     { spanStart :: Int
     , spanLength :: Int
     }
-  deriving (Show)
+  deriving (Show, Eq)
 
 (<->) :: Span -> Span -> Span
 (<->) span1 span2 =
@@ -16,7 +16,7 @@ data Span =
 
 data SpanW a =
   SpanW a Span
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance Functor SpanW where
   fmap f (SpanW a span) = SpanW (f a) span
@@ -43,7 +43,8 @@ data FullSpan =
 
 getFullSpan :: Span -> String -> FullSpan
 getFullSpan span sourceCode =
-  let linesBefore = lines $ take (spanStart span) sourceCode
+  let linesBefore =
+          lines $ take (spanStart span) sourceCode
       lenLastLine = length (last linesBefore)
       lineNo      = length linesBefore
       colNo       = lenLastLine + 1

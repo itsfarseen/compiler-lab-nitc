@@ -11,7 +11,6 @@ import Data.Word
 import Data.List
 import Error (Error)
 import Grammar
-import LoopStack
 
 data AlexInput = AlexInput {alexInputStr :: [Word8], alexTokenOffset :: Int }
 
@@ -20,7 +19,7 @@ data FrontendData =
     { alexInput :: AlexInput
     , symbols :: [Symbol]
     , funcs :: [Func]
-    , loopStack :: LoopStack
+    , loopStack :: Int
     }
 
 newtype Frontend a =
@@ -43,7 +42,7 @@ initData sourceCode =
   in  FrontendData { alexInput
                    , symbols   = []
                    , funcs     = []
-                   , loopStack = LoopStack.init
+                   , loopStack = 0
                    }
 
 runFrontend :: FrontendData -> Frontend a -> Either Error a
@@ -75,10 +74,12 @@ instance WriteFuncs Frontend where
     { funcs = insertList (funcName . funcDecl) func (funcs frontendData)
     }
 
-instance LoopStackReader Frontend where
-  getLoopStack = gets loopStack
+instance ReadLoopStack Frontend where
+  hasLoop = gets (\x -> loopStack x == 0)
 
 instance LoopStackWriter Frontend where
-  putLoopStack loopStack = modify $ \frontendData -> frontendData { loopStack }
+  pushLoop = modify (\x -> x{loopStack = loopStack x + 1})
+  popLoop = modify (\x -> x{loopStack = max 0 (loopStack x - 1)})
 
 instance SymbolTableStack Frontend where
+  -- TODO

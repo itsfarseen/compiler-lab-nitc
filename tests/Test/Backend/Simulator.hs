@@ -19,7 +19,7 @@ unit_simulator =
           [ XSM_MOV_Int SP 4095
           , XSM_ADD_I SP 3
           , XSM_MOV_Int R1 345
-          , XSM_PUSH R1          -- setMemory 4099 345 
+          , XSM_PUSH R1          -- setMemory 4099 345
           , XSM_MOV_DirSrc R1 4096
           , XSM_MOV_DirSrc R2 4097
           , XSM_MOV_IndSrc R2 R2
@@ -39,7 +39,7 @@ unit_simulator_loop :: Assertion
 unit_simulator_loop =
   let machine = Simulator.init code |> Simulator.run
       code =
-          [ {-2056-} XSM_MOV_Int R1 10 -- n    
+          [ {-2056-} XSM_MOV_Int R1 10 -- n
           , {-2058-} XSM_MOV_Int R2 1  -- i
           , {-2060-} XSM_MOV_Int R3 0  -- s
           , {-2062-} XSM_MOV_R R4 R2

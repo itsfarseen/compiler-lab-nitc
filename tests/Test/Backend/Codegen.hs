@@ -30,8 +30,8 @@ unit_getLValueLocInReg_Simple = do
         Compiler.runCompiler
         symbols
         (do
-          r1   <- getLValueLocInReg (LValue [] $ MkIdent "foo")
-          r2   <- getLValueLocInReg (LValue [] $ MkIdent "bar")
+          r1   <- getLValueLocInReg (LValue [] "foo")
+          r2   <- getLValueLocInReg (LValue [] "bar")
           code <- gets Compiler.code
           return (code, r1, r2)
         )
@@ -52,7 +52,7 @@ unit_getLValueLocInReg_Array = do
                  }
         ]
   -- foo[2][1]
-  let lValue = LValue (fmap (RExp . ExpNum) [2, 1]) (MkIdent "foo")
+  let lValue = LValue (fmap (RExp . ExpNum) [2, 1]) "foo"
 
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
@@ -80,7 +80,7 @@ unit_getLValueLocInReg_Array_2 = do
                  }
         ]
   -- foo[2][1]
-  let lValue = LValue (fmap (RExp . ExpNum) [2, 1]) (MkIdent "foo")
+  let lValue = LValue (fmap (RExp . ExpNum) [2, 1]) "foo"
 
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
@@ -110,7 +110,7 @@ unit_getLValueLocInReg_Array_3D = do
                  }
         ]
   -- foo[5][3][7]
-  let lValue = LValue (fmap (RExp . ExpNum) [5, 3, 7]) (MkIdent "foo")
+  let lValue = LValue (fmap (RExp . ExpNum) [5, 3, 7]) "foo"
 
   let (code, reg) = fromRight' $ flip
         Compiler.runCompiler
@@ -134,7 +134,7 @@ unit_assign = do
                  , symDeclSpan = spanNull
                  }
         ]
-  let lhs = LValue (fmap (RExp . ExpNum) [1, 2]) (MkIdent "bar")
+  let lhs = LValue (fmap (RExp . ExpNum) [1, 2]) "bar"
 
   let rhs = RExp $ ExpNum 100
   let code = fromRight' $ flip
@@ -166,17 +166,14 @@ unit_Index_Using_Variable = do
                  , symDeclSpan = spanNull
                  }
         ]
-  let lhs = LValue (fmap (RLValue . LValue [] . MkIdent) ["i", "j"])
-                   (MkIdent "bar")
+  let lhs = LValue (fmap (RLValue . LValue []) ["i", "j"]) "bar"
   let rhs = RExp $ ExpNum 100
   let code = fromRight' $ flip
         Compiler.runCompiler
         symbols
         (do
-          execStmtAssign
-            (MkStmtAssign (LValue [] (MkIdent "i")) (RExp $ ExpNum 1))
-          execStmtAssign
-            (MkStmtAssign (LValue [] (MkIdent "j")) (RExp $ ExpNum 2))
+          execStmtAssign (MkStmtAssign (LValue [] "i") (RExp $ ExpNum 1))
+          execStmtAssign (MkStmtAssign (LValue [] "j") (RExp $ ExpNum 2))
           execStmtAssign (MkStmtAssign lhs rhs)
           gets Compiler.code
         )
