@@ -2,3 +2,5 @@
 dist-newstyle/
 tmp
 vendor
+Session.vim
+.undodir
