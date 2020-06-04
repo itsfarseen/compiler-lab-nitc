@@ -1,5 +1,6 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeApplications #-}
 module Backend.Simulator where
 
 import Backend.Instructions
@@ -9,8 +10,8 @@ import Data.Maybe
 import Flow
 import Text.Read (readMaybe)
 
--- import Debug.Trace
--- debug s v = trace (s ++ show v) v
+import Debug.Trace
+debug s v = trace (s ++ show v) v
 
 data Machine =
     Machine
@@ -27,15 +28,36 @@ type Memory = HM.HashMap Int Int
 
 class XSMStr a where
   toXSMStr :: a -> String
+  -- fromXSMStr :: a -> String
 
 instance XSMStr String where
   toXSMStr s = s
+  -- fromXSMStr s = s
 
 instance XSMStr Int where
   toXSMStr i = show i
+  -- fromXSMStr s = s
 
 init :: [XSMInstr] -> Machine
-init code = Machine HM.empty HM.empty code 2056 [] []
+init code = Machine HM.empty
+                    (HM.fromList [(fromEnum SP, "4096")])
+                    code
+                    2056
+                    [] -- stdin
+                    [] -- stdout
+
+initNoSP :: [XSMInstr] -> Machine
+initNoSP code = Machine HM.empty HM.empty code 2056 [] []
+
+initWithStdin :: [String] -> [XSMInstr] -> Machine
+initWithStdin stdin code = Machine
+  HM.empty
+  (HM.fromList [(fromEnum SP, "4096")])
+  code
+  2056
+  stdin
+
+  []
 
 run :: Machine -> Machine
 run machine = case fetchInstr machine of
@@ -83,12 +105,12 @@ execute instr machine = case instr of
   XSM_MOV_Int r1 val -> setRegVal r1 val machine
   XSM_MOV_Str r1 val -> setRegVal r1 val machine
   XSM_MOV_IndSrc r1 r2 ->
-    let r2Val = read (getRegVal r2 machine)
+    let r2Val = read (getRegVal r2 machine) :: Int
         r2Mem = getMemory r2Val machine
     in  setRegVal r1 r2Mem machine
   XSM_MOV_IndDst r1 r2 ->
     let r2Val = getRegVal r2 machine
-        r1Val = read (getRegVal r1 machine)
+        r1Val = read (getRegVal r1 machine) :: Int
     in  setMemory r1Val r2Val machine
   XSM_MOV_DirSrc r1 loc ->
     let mem = getMemory loc machine
@@ -97,13 +119,13 @@ execute instr machine = case instr of
     let r2Val = getRegVal r2 machine
     in  setMemory loc r2Val machine
   XSM_PUSH r1 ->
-    let spVal = read (getRegVal SP machine)
+    let spVal = read @Int (getRegVal SP machine)
         r1Val = getRegVal r1 machine
     in  machine
           |> setRegVal SP (spVal + 1)
           |> setMemory (spVal + 1) r1Val
   XSM_POP r1 ->
-    let spVal  = read (getRegVal SP machine)
+    let spVal = read @Int (getRegVal SP machine)
         memVal = getMemory spVal machine
     in  machine |> setRegVal r1 memVal |> setRegVal
           SP
@@ -111,28 +133,28 @@ execute instr machine = case instr of
 
   XSM_ADD r1 r2 ->
     let r1Val = read (getRegVal r1 machine) :: Int
-        r2Val = read (getRegVal r2 machine)
+        r2Val = read (getRegVal r2 machine) :: Int
     in  setRegVal r1 (r1Val + r2Val) machine
   XSM_ADD_I r1 i ->
     let r1Val = read (getRegVal r1 machine)
     in  setRegVal r1 (r1Val + i) machine
   XSM_SUB r1 r2 ->
     let r1Val = read (getRegVal r1 machine) :: Int
-        r2Val = read (getRegVal r2 machine)
+        r2Val = read (getRegVal r2 machine) :: Int
     in  setRegVal r1 (r1Val - r2Val) machine
   XSM_SUB_I r1 i ->
     let r1Val = read (getRegVal r1 machine)
     in  setRegVal r1 (r1Val - i) machine
   XSM_MUL r1 r2 ->
     let r1Val = read (getRegVal r1 machine) :: Int
-        r2Val = read (getRegVal r2 machine)
+        r2Val = read (getRegVal r2 machine) :: Int
     in  setRegVal r1 (r1Val * r2Val) machine
   XSM_MUL_I r1 i ->
     let r1Val = read (getRegVal r1 machine)
     in  setRegVal r1 (r1Val * i) machine
   XSM_DIV r1 r2 ->
     let r1Val = read (getRegVal r1 machine) :: Int
-        r2Val = read (getRegVal r2 machine)
+        r2Val = read (getRegVal r2 machine) :: Int
     in  setRegVal r1 (r1Val `div` r2Val) machine
   XSM_DIV_I r1 i ->
     let r1Val = read (getRegVal r1 machine)
@@ -142,7 +164,7 @@ execute instr machine = case instr of
         r2Val = read (getRegVal r2 machine) :: Int
     in  setRegVal r1 (r1Val `mod` r2Val) machine
   XSM_MOD_I r1 i ->
-    let r1Val = read (getRegVal r1 machine)
+    let r1Val = read (getRegVal r1 machine) :: Int
     in  setRegVal r1 (r1Val `mod` i) machine
   XSM_LT r1 r2 -> cmpSet r1 (<) (<) r2 machine
   XSM_EQ r1 r2 -> cmpSet r1 (==) (==) r2 machine
@@ -162,8 +184,7 @@ execute instr machine = case instr of
           else machine
 
   XSM_JMP loc -> machine { ip = loc - 2 }
-  XSM_INT int ->
-    error $ "Interrupt not implemented: " ++ show int
+  XSM_INT int -> syscall int machine
   XSM_UTJ{} ->
     error
       $  "Untranslated jump encountered"
@@ -216,10 +237,10 @@ syscall num machine =
         bufLoc                         = read bufLoc_ :: Int
         (s : stdin')                   = stdin machine
 
-      7 -> if (funcNum, fPtr) /= ("7", "-2")
+      7 -> if (funcNum, fPtr) /= ("5", "-2")
         then
           (  error
-          $  "Read sycall invalid args: (funcnum, ptr) = "
+          $  "Write sycall invalid args: (funcnum, ptr) = "
           ++ (show (funcNum, fPtr))
           )
         else machine { stdout = out : (stdout machine) }

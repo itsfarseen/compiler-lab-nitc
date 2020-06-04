@@ -13,12 +13,19 @@ data CodeOutputMode
   | CodeOutputUntranslated
   deriving (Eq)
 
+
+-- TODO: This function does too much.
+-- Break it down and
+--
 getCode :: CodeOutputMode -> Compiler String
 getCode mode = do
   let header = ["0", "2056", "0", "0", "0", "0", "0", "0"]
   let loadLoc = 2048
   symbolTableLastLoc <- gets symbolTableLastLoc
-  let setupCode = [XSM_MOV_Int SP 4096, XSM_ADD_I SP symbolTableLastLoc]
+  let setupCode =
+        [ XSM_MOV_Int SP 4096
+        , XSM_ADD_I SP symbolTableLastLoc
+        ]
   labels  <- gets labels
   code    <- gets code
   codeStr <- if mode == CodeOutputUntranslated
@@ -28,7 +35,10 @@ getCode mode = do
     else
       (do
         let code' = labelTranslate
-              (loadLoc + length header + (length setupCode * 2))
+              ( loadLoc
+              + length header
+              + (length setupCode * 2)
+              )
               code
               labels
         return $ map Instructions.toString code'
@@ -36,22 +46,44 @@ getCode mode = do
   let setupCodeStr = map Instructions.toString setupCode
   if mode == CodeOutputTranslatedWithAddress
     then
-      let (headerNumbered, codeNumbered) =
-            prependAddress loadLoc header (setupCodeStr ++ codeStr)
+      let (headerNumbered, codeNumbered) = prependAddress
+            loadLoc
+            header
+            (setupCodeStr ++ codeStr)
       in  return $ unlines $ headerNumbered ++ codeNumbered
-    else return $ unlines $ header ++ setupCodeStr ++ codeStr ++ ["HALT"]
+    else
+      return
+      $  unlines
+      $  header
+      ++ setupCodeStr
+      ++ codeStr
+      ++ ["HALT"]
 
+getTranslatedInstrs :: Compiler [XSMInstr]
+getTranslatedInstrs = do
+  code   <- gets code
+  labels <- gets labels
+  return $ labelTranslate 2056 code labels
 
-prependAddress :: Int -> [String] -> [String] -> ([String], [String])
+prependAddress
+  :: Int -> [String] -> [String] -> ([String], [String])
 prependAddress loadLoc header code =
-  let headerNumbered = zipWith insertNumber [loadLoc ..] header
-      codeStart      = loadLoc + length header
-      codeNumbered   = zipWith insertNumber [codeStart, codeStart + 2 ..] code
-  in  (headerNumbered, codeNumbered)
+  let
+    headerNumbered =
+      zipWith insertNumber [loadLoc ..] header
+    codeStart    = loadLoc + length header
+    codeNumbered = zipWith insertNumber
+                           [codeStart, codeStart + 2 ..]
+                           code
+  in
+    (headerNumbered, codeNumbered)
   where insertNumber i s = show i ++ ":\t" ++ s
 
-
-labelTranslate :: Int -> [XSMInstr] -> HM.HashMap String Int -> [XSMInstr]
+labelTranslate
+  :: Int
+  -> [XSMInstr]
+  -> HM.HashMap String Int
+  -> [XSMInstr]
 labelTranslate offset instrs labels = map
   (\instr -> case instr of
     XSM_UTJ jmp ->
@@ -64,16 +96,21 @@ labelTranslate offset instrs labels = map
   instrs
 
 
-prependLabels :: [String] -> Int -> [(String, Int)] -> [String]
+prependLabels
+  :: [String] -> Int -> [(String, Int)] -> [String]
 prependLabels code i labels =
   let labelsSorted = sortOn snd labels
-  in  case labelsSorted of
-        []                     -> code
-        ((label, j) : labels') -> case code of
-          []          -> (label ++ ":\t") : prependLabels [] (i + 1) labels'
-          (c : code') -> if i == j
-            then
-              let c' = label ++ ":\t" ++ c
-              in  c' : prependLabels code' (i + 1) labels'
-            else ("\t" ++ c) : prependLabels code' (i + 1) labels
+  in
+    case labelsSorted of
+      []                     -> code
+      ((label, j) : labels') -> case code of
+        [] ->
+          (label ++ ":\t")
+            : prependLabels [] (i + 1) labels'
+        (c : code') -> if i == j
+          then
+            let c' = label ++ ":\t" ++ c
+            in  c' : prependLabels code' (i + 1) labels'
+          else
+            ("\t" ++ c) : prependLabels code' (i + 1) labels
 

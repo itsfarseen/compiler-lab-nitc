@@ -17,75 +17,104 @@ build-type:     Simple
 extra-source-files:
     README.md
 
-library
-  exposed-modules:
-        Grammar
-      , Span
-      , Parser
-      , Lexer
-      , Error
-      , Frontend
-      , Token
-      , LoopStack
-      , Backend.Codegen
-      , Backend.Compiler
-      , Backend.Instructions
-      , Backend.Reg
-      , Backend.CodeUtils
-      , Backend.Main
-      , Backend.Simulator
-  hs-source-dirs:
-      lib
-  -- ghc-options: -threaded -rtsopts -with-rtsopts=-N
-  ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS
-  build-depends:
-      base
-    , flow
-    , unordered-containers
-    , mtl
-    , utf8-string
-    , extra
-    , errors
-    , array
-    , filepath
-  default-language: Haskell2010
-  build-tool-depends:
-        alex:alex
-      , happy:happy
-
 executable CompilerLab
-  main-is: Main.hs
-  ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS
-  hs-source-dirs:
-    src
-  build-depends:
-      base
-    , utf8-string
-    , filepath
-    , mtl
-    , CompilerLab
+
   default-language: Haskell2010
 
-test-suite test
-  default-language:
-    Haskell2010
-  type:
-    exitcode-stdio-1.0
-  hs-source-dirs:
-    tests
   main-is:
     Main.hs
+
+  hs-source-dirs:
+    lib
+    src
+
   other-modules:
-    Test.Grammar
-    Test.Backend.Simulator
-    Test.Backend.Codegen
+    Backend.CodeUtils
+    Backend.Codegen
+    Backend.Compiler
+    Backend.Instructions
+    Backend.Main
+    Backend.Reg
+    Backend.Simulator
+    Error
+    Frontend
+    Grammar
+    Lexer
+    LoopStack
+    Parser
+    Span
+    Token
+
+  ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS
+
   build-depends:
       base
-    , CompilerLab
+    , array
+    , errors
     , extra
-    , mtl
+    , filepath
     , flow
+    , mtl
+    , unordered-containers
+    , utf8-string
+
+  build-tool-depends:
+      alex:alex
+    , happy:happy
+
+test-suite test
+
+  default-language:
+    Haskell2010
+
+  type:
+    exitcode-stdio-1.0
+
+  hs-source-dirs:
+    tests
+    lib
+
+  main-is:
+    Main.hs
+
+  other-modules:
+    Backend.CodeUtils
+    Backend.Codegen
+    Backend.Compiler
+    Backend.Instructions
+    Backend.Main
+    Backend.Reg
+    Backend.Simulator
+    Error
+    Frontend
+    Grammar
+    Lexer
+    LoopStack
+    Parser
+    Span
+    Test.Backend.Codegen
+    Test.Backend.Simulator
+    Test.Grammar
+    Token
+
+  build-depends:
+      base
+    , array
+    , errors
+    , extra
+    , extra
+    , filepath
+    , flow
+    , mtl
+    , mtl
     , tasty
-    , tasty-hunit
     , tasty-discover
+    , tasty-hunit
+    , unordered-containers
+    , utf8-string
+
+  build-tool-depends:
+      alex:alex
+    , happy:happy
+
   ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS

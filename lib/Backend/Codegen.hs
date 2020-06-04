@@ -158,7 +158,9 @@ getLValueLocInReg lValue = do
       appendCode [XSM_MOV_Int reg loc]
       return (reg, 1)
     ([], _ : _) -> error $ "Compiler bug: Too many indices "
-    (_ : _, []) -> error $ "Compiler bug: Too less indices: " ++ (show dims)
+    (d : ds, []) -> do
+      (reg, innerSize) <- getLValueLocInReg' ds indices identName
+      return (reg, innerSize * d)
     (d : ds, i : is) -> do
       (reg, innerSize) <- getLValueLocInReg' ds is identName
       rhs              <- getRValueInReg i
