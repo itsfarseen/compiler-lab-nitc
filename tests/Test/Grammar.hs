@@ -516,6 +516,7 @@ test_mkExpLogical = testCaseSteps "Exp Logical" $ \step ->
 
     return ()
 
+test_mkExpFuncCall :: TestTree
 test_mkExpFuncCall = testCaseSteps "mkExpFuncCall" $ \step -> do
   step "Undeclared function"
   assertError $ runTestM initState $ do

@@ -11,9 +11,9 @@ unit_simulator :: Assertion
 unit_simulator =
   let machine =
           Simulator.init code
-            |> Simulator.setMemory 4096 123
-            |> Simulator.setMemory 4097 4098
-            |> Simulator.setMemory 4098 234
+            |> Simulator.setMemory 4096 "123"
+            |> Simulator.setMemory 4097 "4098"
+            |> Simulator.setMemory 4098 "234"
             |> Simulator.run
       code =
           [ XSM_MOV_Int SP 4095
@@ -26,13 +26,13 @@ unit_simulator =
           , XSM_POP R3
           ]
   in  do
-        Simulator.getRegVal SP machine @?= 4098
-        Simulator.getMemory 4096 machine @?= 123
-        Simulator.getMemory 4097 machine @?= 4098
-        Simulator.getMemory 4098 machine @?= 234
-        Simulator.getRegVal R1 machine @?= 123
-        Simulator.getRegVal R2 machine @?= 234
-        Simulator.getRegVal R3 machine @?= 345
+        Simulator.getRegVal SP machine @?= "4098"
+        Simulator.getMemory 4096 machine @?= "123"
+        Simulator.getMemory 4097 machine @?= "4098"
+        Simulator.getMemory 4098 machine @?= "234"
+        Simulator.getRegVal R1 machine @?= "123"
+        Simulator.getRegVal R2 machine @?= "234"
+        Simulator.getRegVal R3 machine @?= "345"
 
 -- brittany-disable-next-binding
 unit_simulator_loop :: Assertion
@@ -52,6 +52,6 @@ unit_simulator_loop =
           , {-2076-} XSM_JMP 2062
           ]
   in  do
-        Simulator.getRegVal R1 machine @?= 10
-        Simulator.getRegVal R2 machine @?= 11
-        Simulator.getRegVal R3 machine @?= (sum $ map (\x -> x * x) [1 .. 10])
+        Simulator.getRegVal R1 machine @?= "10"
+        Simulator.getRegVal R2 machine @?= "11"
+        Simulator.getRegVal R3 machine @?= show (sum $ map (\x -> x * x) [1 .. 10 :: Int])

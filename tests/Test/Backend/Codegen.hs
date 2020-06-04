@@ -38,8 +38,8 @@ unit_getLValueLocInReg_Simple = do
   let simulator = Simulator.run (Simulator.init code)
   let loc1      = Simulator.getRegVal r1 simulator
   let loc2      = Simulator.getRegVal r2 simulator
-  loc1 @?= 4096
-  loc2 @?= 4097
+  loc1 @?= "4096"
+  loc2 @?= "4097"
 
 
 unit_getLValueLocInReg_Array :: Assertion
@@ -64,7 +64,7 @@ unit_getLValueLocInReg_Array = do
         )
   let simulator = Simulator.run (Simulator.init code)
   let loc       = Simulator.getRegVal reg simulator
-  loc @?= 4096 + 2 * 4 + 1
+  loc @?= show (4096 + 2 * 4 + 1 :: Int)
 
 unit_getLValueLocInReg_Array_2 :: Assertion
 unit_getLValueLocInReg_Array_2 = do
@@ -92,7 +92,7 @@ unit_getLValueLocInReg_Array_2 = do
         )
   let simulator = Simulator.run (Simulator.init code)
   let loc       = Simulator.getRegVal reg simulator
-  loc @?= 4096 + (3 * 4) + 2 * 4 + 1
+  loc @?= show (4096 + (3 * 4) + 2 * 4 + 1 :: Int)
 
 
 
@@ -122,7 +122,7 @@ unit_getLValueLocInReg_Array_3D = do
         )
   let simulator = Simulator.run (Simulator.init code)
   let loc       = Simulator.getRegVal reg simulator
-  loc @?= 4096 + (3 * 4) + 5 * 140 + 3 * 7 + 7
+  loc @?= show (4096 + (3 * 4) + 5 * 140 + 3 * 7 + 7 :: Int)
 
 
 
@@ -147,7 +147,7 @@ unit_assign = do
   let simulator = Simulator.run (Simulator.init code)
   let loc       = 4096 + 1 * 4 + 2
   let val       = Simulator.getMemory loc simulator
-  val @?= 100
+  val @?= "100"
 
 
 unit_Index_Using_Variable :: Assertion
@@ -180,5 +180,5 @@ unit_Index_Using_Variable = do
   let simulator = Simulator.run (Simulator.init code)
   let loc       = 4096 + 1 * 4 + 2
   let val       = Simulator.getMemory loc simulator
-  val @?= 100
+  val @?= "100"
 
