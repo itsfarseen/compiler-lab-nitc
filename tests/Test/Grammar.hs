@@ -68,7 +68,6 @@ instance WriteFuncs TestM where
                              func
                              (tsFuncs state)
       }
-        -- Note: multiple insert will cause duplicates
     )
 
 instance ReadLoopStack TestM where
@@ -119,7 +118,7 @@ test_varDeclare =
     step "Redeclare var"
     assertError $ runTestM initState $ do
       doVarDeclare "foo" TypeInt  [1, 2] (Span 0 0)
-      doVarDeclare "foo" TypeBool [2, 2] (Span 0 0)
+      doVarDeclare "foo" TypeInt  [2, 2] (Span 0 0)
 
 
 test_mkLValue :: TestTree
@@ -157,43 +156,31 @@ test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
                  (Span 0 0)
 
   step "Assign variable"
-  (stmt, _) <- assertRight $ runTestM initState $ do
-    symInsert
-      $ Symbol "foo" (DataType [5, 10] TypeInt) (Span 0 0)
-    symInsert
-      $ Symbol "bar" (DataType [] TypeInt) (Span 0 0)
+  _ <- assertRight $ runTestM initState $ do
+    doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
+    doVarDeclare "bar" TypeInt [] (Span 0 0)
     mkStmtAssign (LValue (RExp . ExpNum <$> [1, 2]) "foo")
                  (RLValue $ LValue [] "bar")
                  (Span 0 0)
-  let (MkStmtAssign lhs rhs) = stmt
-  lhs @?= LValue (RExp . ExpNum <$> [1, 2]) "foo"
-  rhs @?= (RLValue $ LValue [] "bar")
+
   step "Assign self"
-  (stmt, _) <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeInt) (Span 0 0))
+  _ <- assertRight $ runTestM initState $ do
+    doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkStmtAssign (LValue [] "foo")
                  (RLValue $ LValue [] "foo")
                  (Span 0 0)
-  let (MkStmtAssign lhs rhs) = stmt
-  lhs @?= LValue [] "foo"
-  rhs @?= (RLValue $ LValue [] "foo")
+
   step "Type mismatch"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [5, 10] TypeString) (Span 0 0)
-      )
+    doVarDeclare "foo" TypeString [5, 10] (Span 0 0)
     mkStmtAssign (LValue (RExp . ExpNum <$> [1, 2]) "foo")
                  (RExp $ ExpNum 10)
                  (Span 0 0)
+
   step "Assign to array"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [5, 10] TypeString) (Span 0 0)
-      )
-    symInsert
-      (Symbol "bar" (DataType [5, 10] TypeString) (Span 0 0)
-      )
+    doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
+    doVarDeclare "bar" TypeInt [5, 10] (Span 0 0)
     mkStmtAssign (LValue [] "foo")
                  (RLValue $ LValue [] "bar")
                  (Span 0 0)
@@ -202,74 +189,52 @@ test_stmtRead :: TestTree
 test_stmtRead = testCaseSteps "StmtRead" $ \step -> do
   step "Read Int"
   _ <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [5, 10] TypeString) (Span 0 0)
-      )
-    mkStmtRead $ SpanW
+   doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
+   mkStmtRead $ SpanW
       (LValue (RExp . ExpNum <$> [0, 1]) "foo")
       (Span 0 0)
 
   step "Read String"
   _ <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [5, 10] TypeString) (Span 0 0)
-      )
+    doVarDeclare "foo" TypeString [5, 10] (Span 0 0)
     mkStmtRead $ SpanW
       (LValue (RExp . ExpNum <$> [0, 1]) "foo")
       (Span 0 0)
 
   step "Read bool"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeBool [5, 10] (Span 0 0)
     mkStmtRead $ SpanW (LValue [] "foo") (Span 0 0)
+
   step "Read array"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [1] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeInt [1] (Span 0 0)
     mkStmtRead $ SpanW (LValue [] "foo") (Span 0 0)
-  step "Read array"
-  assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [5, 10] TypeBool) (Span 0 0))
-    mkStmtRead
-      $ SpanW (LValue [RExp $ ExpNum 1] "foo") (Span 0 0)
+
 
 test_stmtWrite :: TestTree
 test_stmtWrite = testCaseSteps "StmtWrite" $ \step -> do
   step "Write Int"
   _ <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeInt) (Span 0 0))
+    doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkStmtWrite
       $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
 
   step "Write String"
   _ <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeString) (Span 0 0))
+    doVarDeclare "foo" TypeString [] (Span 0 0)
     mkStmtWrite
       $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
 
   step "Write Bool"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeBool [] (Span 0 0)
     mkStmtWrite
       $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
 
-  step "Write Array Element"
-  _ <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [5, 10] TypeInt) (Span 0 0))
-    mkStmtWrite $ SpanW
-      (RLValue $ LValue (RExp . ExpNum <$> [0, 1]) "foo")
-      (Span 0 0)
-
   step "Write Array"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [1] TypeInt) (Span 0 0))
+    doVarDeclare "foo" TypeInt [1] (Span 0 0)
     mkStmtWrite
       $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
 
@@ -277,32 +242,14 @@ test_stmtIf :: TestTree
 test_stmtIf = testCaseSteps "StmtIf" $ \step -> do
   step "If Bool"
   _ <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeBool [] (Span 0 0)
     mkStmtIf
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
       []
 
-  step "If String"
+  step "If non Bool"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeString) (Span 0 0))
-    mkStmtIf
-      (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
-      []
-
-  step "If Int"
-  assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeInt) (Span 0 0))
-    mkStmtIf
-      (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
-      []
-
-  step "If Bool Array"
-  assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [1] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkStmtIf
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
       []
@@ -311,33 +258,15 @@ test_stmtIfElse :: TestTree
 test_stmtIfElse = testCaseSteps "StmtIfElse" $ \step -> do
   step "IfElse Bool"
   _ <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeBool [] (Span 0 0)
     mkStmtIfElse
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
       []
       []
 
-  step "IfElse String"
+  step "IfElse non Bool"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeString) (Span 0 0))
-    mkStmtIfElse
-      (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
-      []
-      []
-  step "IfElse Int"
-  assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeInt) (Span 0 0))
-    mkStmtIfElse
-      (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
-      []
-      []
-  step "IfElse Array"
-  assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [1] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkStmtIfElse
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
       []
@@ -347,30 +276,14 @@ test_stmtWhile :: TestTree
 test_stmtWhile = testCaseSteps "StmtWhile" $ \step -> do
   step "While Bool"
   _ <- assertRight $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeBool [] (Span 0 0)
     mkStmtWhile
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
       []
 
-  step "While String"
+  step "While non Bool"
   assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeString) (Span 0 0))
-    mkStmtWhile
-      (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
-      []
-  step "While Int"
-  assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [] TypeInt) (Span 0 0))
-    mkStmtWhile
-      (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
-      []
-  step "While Bool Array"
-  assertError $ runTestM initState $ do
-    symInsert
-      (Symbol "foo" (DataType [1] TypeBool) (Span 0 0))
+    doVarDeclare "foo" TypeString [] (Span 0 0)
     mkStmtWhile
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
       []
@@ -381,6 +294,7 @@ test_stmtBreak = testCaseSteps "StmtBreak" $ \step -> do
   _ <- assertRight $ runTestM initState $ do
     pushLoop
     mkStmtBreak (Span 0 0)
+
   step "Break Outside Loop"
   assertError $ runTestM initState $ mkStmtBreak (Span 0 0)
 
@@ -391,6 +305,7 @@ test_stmtContinue =
     _ <- assertRight $ runTestM initState $ do
       pushLoop
       mkStmtContinue (Span 0 0)
+
     step "Continue Outside Loop"
     assertError $ runTestM initState $ mkStmtContinue
       (Span 0 0)
@@ -502,7 +417,6 @@ test_mkExpLogical = testCaseSteps "Exp Logical" $ \step ->
       (spanW (RExp $ ExpNum 1))
 
     step "Str Str"
-
     _ <- assertRight $ runTestM initState $ mkExpLogical
       (spanW (RExp $ ExpStr "A"))
       OpLT
@@ -541,6 +455,3 @@ test_mkExpFuncCall = testCaseSteps "mkExpFuncCall" $ \step -> do
     mkStmtAssign lValue exp (Span 0 0)
 
   return ()
-
-
-
