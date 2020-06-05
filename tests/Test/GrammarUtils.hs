@@ -81,3 +81,11 @@ runGrammarM
 runGrammarM state testM =
   let (GrammarM stateT) = testM in runStateT stateT state
 
+gRun :: GrammarM a -> Either Error (a, GrammarState)
+gRun = runGrammarM initGrammarState
+
+gAssertError :: GrammarM a -> IO ()
+gAssertError = assertError . gRun
+
+gAssertRight :: GrammarM a -> IO ()
+gAssertRight x = assertRight $ gRun x >> return ()
