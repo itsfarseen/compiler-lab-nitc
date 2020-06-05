@@ -14,19 +14,18 @@ parseProgram program = do
 
 execStmt :: (CompilerClass m) => Stmt -> m ()
 execStmt stmt = case stmt of
-  StmtAssign (MkStmtAssign lhs rhs    ) -> execStmtAssign lhs rhs
-  StmtRead   (MkStmtRead  lValue      ) -> execStmtRead lValue
-  StmtWrite  (MkStmtWrite rValue      ) -> execStmtWrite rValue
-  StmtIf     (MkStmtIf condition stmts) -> execStmtIf condition stmts
-  StmtIfElse (MkStmtIfElse condition stmtsThen stmtsElse) ->
-    execStmtIfElse condition stmtsThen stmtsElse
-  StmtWhile (MkStmtWhile condition stmts) ->
-    execStmtWhile condition stmts
-  StmtBreak    _ -> execStmtBreak
-  StmtContinue _ -> execStmtContinue
+  StmtAssign   stmt -> execStmtAssign stmt
+  StmtRead     stmt -> execStmtRead stmt
+  StmtWrite    stmt -> execStmtWrite stmt
+  StmtIf       stmt -> execStmtIf stmt
+  StmtIfElse   stmt -> execStmtIfElse stmt
+  StmtWhile    stmt -> execStmtWhile stmt
+  StmtBreak    stmt -> execStmtBreak stmt
+  StmtContinue stmt -> execStmtContinue stmt
 
-execStmtAssign :: (CompilerClass m) => LValue -> RValue -> m ()
-execStmtAssign lhs rhs = do
+execStmtAssign :: (CompilerClass m) => StmtAssign -> m ()
+execStmtAssign stmt = do
+  let (MkStmtAssign lhs rhs) = stmt
   rhsReg    <- getRValueInReg rhs
   lhsLocReg <- getLValueLocInReg lhs
   appendCode [XSM_MOV_IndDst lhsLocReg rhsReg]
@@ -34,8 +33,9 @@ execStmtAssign lhs rhs = do
   releaseReg rhsReg
   return ()
 
-execStmtRead :: (Idents m, FreeRegs m, Labels m) => LValue -> m ()
-execStmtRead lValue = do
+execStmtRead :: (CompilerClass m) => StmtRead -> m ()
+execStmtRead stmt = do
+  let MkStmtRead lValue = stmt
   lValueLocReg <- getLValueLocInReg lValue
   t1           <- getFreeReg
   let code =
@@ -57,18 +57,16 @@ execStmtRead lValue = do
   releaseReg t1
   releaseReg lValueLocReg
 
-execStmtWrite :: (Idents m, FreeRegs m, Labels m) => RValue -> m ()
-execStmtWrite rValue = do
+execStmtWrite :: (CompilerClass m) => StmtWrite -> m ()
+execStmtWrite stmt = do
+  let MkStmtWrite rValue = stmt
   reg <- getRValueInReg rValue
   printReg reg
   releaseReg reg
 
-execStmtIf
-  :: (Idents m, FreeRegs m, Labels m, Foldable t)
-  => RValue
-  -> t Stmt
-  -> m ()
-execStmtIf condition stmts = do
+execStmtIf :: (CompilerClass m) => StmtIf -> m ()
+execStmtIf stmt = do
+  let MkStmtIf condition stmts = stmt
   condReg  <- getRValueInReg condition
   endLabel <- getNewLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JZ condReg endLabel]
@@ -76,13 +74,9 @@ execStmtIf condition stmts = do
   installLabel endLabel
   releaseReg condReg
 
-execStmtIfElse
-  :: (Idents m, FreeRegs m, Labels m, Foldable t1, Foldable t2)
-  => RValue
-  -> t1 Stmt
-  -> t2 Stmt
-  -> m ()
-execStmtIfElse condition stmtsThen stmtsElse = do
+execStmtIfElse :: (CompilerClass m) => StmtIfElse -> m ()
+execStmtIfElse stmt = do
+  let MkStmtIfElse condition stmtsThen stmtsElse = stmt
   condReg   <- getRValueInReg condition
   elseLabel <- getNewLabel
   endLabel  <- getNewLabel
@@ -107,12 +101,9 @@ loopBody body = do
   _ <- popLoopBreakLabel
   return ()
 
-execStmtWhile
-  :: (Idents m, FreeRegs m, Labels m, Foldable t)
-  => RValue
-  -> t Stmt
-  -> m ()
-execStmtWhile condition stmts = do
+execStmtWhile :: (CompilerClass m) => StmtWhile -> m ()
+execStmtWhile stmt = do
+  let MkStmtWhile condition stmts = stmt
   loopBody $ \startLabel endLabel -> do
     r <- getRValueInReg condition
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
@@ -120,13 +111,13 @@ execStmtWhile condition stmts = do
     mapM_ execStmt stmts
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
 
-execStmtBreak :: (Labels m) => m ()
-execStmtBreak = do
+execStmtBreak :: (CompilerClass m) => StmtBreak -> m ()
+execStmtBreak _ = do
   endLabel <- peekLoopBreakLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JMP endLabel]
 
-execStmtContinue :: (Labels m) => m ()
-execStmtContinue = do
+execStmtContinue :: (CompilerClass m) => StmtContinue -> m ()
+execStmtContinue _ = do
   endLabel <- peekLoopContinueLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JMP endLabel]
 
@@ -159,19 +150,15 @@ getLValueLocInReg lValue = do
   return reg
  where
   getLValueLocInReg'
-    :: (CompilerClass m)
-    => [Int]
-    -> [RValue]
-    -> String
-    -> m (Reg, Int)
+    :: (CompilerClass m) => [Int] -> [RValue] -> String -> m (Reg, Int)
   getLValueLocInReg' dims indices identName = case (dims, indices) of
     ([], []) -> do
       reg <- getFreeReg
       loc <- getIdentLocInStack identName
       appendCode [XSM_MOV_Int reg loc]
       return (reg, 1)
-    ([]    , _ : _) -> error $ "Compiler bug: Too many indices "
-    (d : ds, []   ) -> do
+    ([], _ : _) -> error $ "Compiler bug: Too many indices "
+    (d : ds, []) -> do
       (reg, innerSize) <- getLValueLocInReg' ds indices identName
       return (reg, innerSize * d)
     (d : ds, i : is) -> do
@@ -192,19 +179,16 @@ getRValueInReg rValue = case rValue of
     reg <- getFreeReg
     appendCode [XSM_MOV_Str reg s]
     return reg
-  RExp (MkExpArithmetic e1 op e2) ->
-    execALUInstr (arithOpInstr op) e1 e2
-  RExp (MkExpLogical e1 op e2) ->
-    execALUInstr (logicOpInstr op) e1 e2
-  RLValue lValue -> do
+  RExp    (MkExpArithmetic e1 op e2) -> execALUInstr (arithOpInstr op) e1 e2
+  RExp    (MkExpLogical    e1 op e2) -> execALUInstr (logicOpInstr op) e1 e2
+  RLValue lValue                     -> do
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
 
 type ALUInstr = (Reg -> Reg -> XSMInstr)
 
-execALUInstr
-  :: (CompilerClass m) => ALUInstr -> RValue -> RValue -> m Reg
+execALUInstr :: (CompilerClass m) => ALUInstr -> RValue -> RValue -> m Reg
 execALUInstr instr e1 e2 = do
   r1 <- getRValueInReg e1
   r2 <- getRValueInReg e2

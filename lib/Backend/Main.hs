@@ -11,8 +11,3 @@ main :: Program -> CodeOutputMode -> [Symbol] -> Either Error String
 main program mode symbols = flip Compiler.runCompiler symbols $ do
   Codegen.parseProgram program
   CodeUtils.getCode mode
-
---- Steps
---   * Generate code for main function
---   * Generate code for other functions
---
