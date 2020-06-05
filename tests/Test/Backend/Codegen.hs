@@ -30,8 +30,7 @@ test_execStmtAssign = testCaseSteps "execStmtAssign" $ \step -> do
         Compiler.runCompiler
         symbols
         (do
-          execStmtAssign
-            $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 10)
+          execStmtAssign (LValue [] "foo") (RExp $ ExpNum 10)
           code <- gets Compiler.code
           return code
         )
@@ -43,10 +42,8 @@ test_execStmtAssign = testCaseSteps "execStmtAssign" $ \step -> do
         Compiler.runCompiler
         symbols
         (do
-          execStmtAssign
-            $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 10)
-          execStmtAssign $ MkStmtAssign (LValue [] "foo")
-                                        (RLValue $ LValue [] "foo")
+          execStmtAssign (LValue [] "foo") (RExp $ ExpNum 10)
+          execStmtAssign (LValue [] "foo") (RLValue $ LValue [] "foo")
           code <- gets Compiler.code
           return code
         )
@@ -68,7 +65,7 @@ test_execStmtRead = testCaseSteps "execStmtRead" $ \step -> do
         Compiler.runCompiler
         symbols
         (do
-          execStmtRead (MkStmtRead (LValue [] "foo"))
+          execStmtRead ((LValue [] "foo"))
           code <- gets Compiler.code
           return code
         )
@@ -82,8 +79,8 @@ test_execStmtRead = testCaseSteps "execStmtRead" $ \step -> do
         Compiler.runCompiler
         symbols
         (do
-          execStmtRead (MkStmtRead (LValue [] "foo"))
-          execStmtRead (MkStmtRead (LValue [] "foo"))
+          execStmtRead ((LValue [] "foo"))
+          execStmtRead ((LValue [] "foo"))
           code <- gets Compiler.code
           return code
         )
@@ -98,8 +95,8 @@ test_execStmtWrite = testCaseSteps "execStmtWrite" $ \step -> do
         Compiler.runCompiler
         []
         (do
-          execStmtWrite (MkStmtWrite (RExp $ ExpNum 100))
-          execStmtWrite (MkStmtWrite (RExp $ ExpStr "ASD"))
+          execStmtWrite ((RExp $ ExpNum 100))
+          execStmtWrite ((RExp $ ExpStr "ASD"))
           code <- gets Compiler.code
           return code
         )
@@ -115,7 +112,7 @@ test_execStmtIf = testCaseSteps "execStmtIf" $ \step -> do
       Compiler.runCompiler
       []
       (do
-        execStmtIf $ MkStmtIf
+        execStmtIf
           ( RExp
           $ MkExpLogical (RExp $ ExpNum 1) OpEQ (RExp $ ExpNum 1)
           )
@@ -139,7 +136,7 @@ test_execStmtIf = testCaseSteps "execStmtIf" $ \step -> do
       Compiler.runCompiler
       []
       (do
-        execStmtIf $ MkStmtIf
+        execStmtIf
           ( RExp
           $ MkExpLogical (RExp $ ExpNum 1) OpNE (RExp $ ExpNum 1)
           )
@@ -165,7 +162,7 @@ test_execStmtIfElse = testCaseSteps "execStmtIfElse" $ \step -> do
       Compiler.runCompiler
       []
       (do
-        execStmtIfElse $ MkStmtIfElse
+        execStmtIfElse
           ( RExp
           $ MkExpLogical (RExp $ ExpNum 1) OpEQ (RExp $ ExpNum 1)
           )
@@ -195,7 +192,7 @@ test_execStmtIfElse = testCaseSteps "execStmtIfElse" $ \step -> do
       Compiler.runCompiler
       []
       (do
-        execStmtIfElse $ MkStmtIfElse
+        execStmtIfElse
           ( RExp
           $ MkExpLogical (RExp $ ExpNum 1) OpNE (RExp $ ExpNum 1)
           )
@@ -230,9 +227,8 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
         Compiler.runCompiler
         symbols
         (do
-          execStmtAssign
-            $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
-          execStmtWhile $ MkStmtWhile
+          execStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
+          execStmtWhile
             (RExp $ MkExpLogical (RLValue $ LValue [] "foo")
                                  OpLT
                                  (RExp $ ExpNum 10)
@@ -255,9 +251,8 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
         Compiler.runCompiler
         symbols
         (do
-          execStmtAssign
-            $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 100)
-          execStmtWhile $ MkStmtWhile
+          execStmtAssign (LValue [] "foo") (RExp $ ExpNum 100)
+          execStmtWhile
             (RExp $ MkExpLogical (RLValue $ LValue [] "foo")
                                  OpLT
                                  (RExp $ ExpNum 10)
@@ -288,9 +283,8 @@ test_execStmtBreak = testCaseSteps "execStmtBreak" $ \step -> do
         Compiler.runCompiler
         symbols
         (do
-          execStmtAssign
-            $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
-          execStmtWhile $ MkStmtWhile
+          execStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
+          execStmtWhile
             (RExp $ MkExpLogical (RLValue $ LValue [] "foo")
                                  OpLT
                                  (RExp $ ExpNum 10)
@@ -328,11 +322,9 @@ test_execStmtContinue = testCaseSteps "execStmtContinue" $ \step ->
           Compiler.runCompiler
           symbols
           (do
-            execStmtAssign
-              $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
-            execStmtAssign
-              $ MkStmtAssign (LValue [] "bar") (RExp $ ExpNum 0)
-            execStmtWhile $ MkStmtWhile
+            execStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
+            execStmtAssign (LValue [] "bar") (RExp $ ExpNum 0)
+            execStmtWhile
               (RExp $ MkExpLogical (RLValue $ LValue [] "foo")
                                    OpLT
                                    (RExp $ ExpNum 10)
@@ -373,7 +365,9 @@ test_execStmtContinue = testCaseSteps "execStmtContinue" $ \step ->
     Simulator.getMemory loc simulator
       @?= (show . sum) [0 :: Int, 1, 2, 3, 4, 6, 7, 8, 9]
 
-
+test_functionCall :: TestTree
+test_functionCall = testCaseSteps "Function Call" $ \step -> do
+  return ()
 
 ----------------------------------------------------------------------------------------
 
