@@ -92,9 +92,12 @@ test-suite test
     LoopStack
     Parser
     Span
+    Test.Backend.CodeUtils
     Test.Backend.Codegen
     Test.Backend.Simulator
     Test.Grammar
+    Test.GrammarUtils
+    Test.Utils
     Token
 
   build-depends:

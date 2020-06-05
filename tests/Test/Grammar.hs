@@ -1,122 +1,24 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE LambdaCase #-}
-
 module Test.Grammar where
 
-import Control.Monad.Except (MonadError)
-import Control.Monad.State.Strict
-import Data.List (find)
-import Error
 import Grammar
 import Span
+import Test.GrammarUtils
+import Test.Utils
 import Test.Tasty (TestTree)
 import Test.Tasty.HUnit
-
-data TestMState = TestMState
-  { tsSymbols :: [[Symbol]],
-    tsFuncs :: [Func],
-    tsLoopStack :: Int
-  }
-
-initState :: TestMState
-initState = TestMState [[]] [] 0
-
-newtype TestM a
-  = TestM (StateT TestMState (Either Error) a)
-  deriving
-    ( Functor,
-      Applicative,
-      Monad,
-      MonadError Error,
-      MonadState TestMState
-    )
-
-insertList :: Eq k => (a -> k) -> a -> [a] -> [a]
-insertList key a list = case list of
-  [] -> [a]
-  (a' : as') ->
-    (if key a == key a'
-      then a : as'
-      else a' : insertList key a as'
-    )
-
-spanW :: a -> SpanW a
-spanW a = SpanW a (Span 0 0)
-
-instance ReadSymbols TestM where
-  symLookup name = gets
-    (find (\x -> symName x == name) . concat . tsSymbols)
-
-instance WriteSymbols TestM where
-  symInsert sym = modify
-    (\state ->
-      let (symtab : ss) = tsSymbols state
-          symtab'       = symtab ++ [sym]
-          tsSymbols'    = (symtab' : ss)
-      in  state { tsSymbols = tsSymbols' }
-        -- Note: multiple insert will cause duplicates
-    )
-
-instance ReadFuncs TestM where
-  funcLookup name = gets
-    (find (\x -> (funcName . funcDecl) x == name) . tsFuncs)
-
-instance WriteFuncs TestM where
-  funcInsert func = modify
-    (\state -> state
-      { tsFuncs = insertList (funcName . funcDecl)
-                             func
-                             (tsFuncs state)
-      }
-    )
-
-instance ReadLoopStack TestM where
-  hasLoop = gets (\x -> tsLoopStack x > 0)
-
-instance LoopStackWriter TestM where
-  pushLoop =
-    modify (\x -> x { tsLoopStack = tsLoopStack x + 1 })
-  popLoop =
-    modify
-      (\x -> x { tsLoopStack = max 0 (tsLoopStack x - 1) })
-
-instance SymbolTableStack TestM where
-  symStackPush =
-    modify (\x -> x { tsSymbols = [] : (tsSymbols x) })
-  symStackPop = do
-    (symtab, ss) <- gets tsSymbols >>= \case
-      [] -> error "tsSymbols can't be empty"
-      [_] -> error "can't pop symStack, only one symtab"
-      (symtab : ss) -> return (symtab, ss)
-    modify (\x -> x { tsSymbols = ss })
-    return symtab
-
-runTestM
-  :: TestMState -> TestM a -> Either Error (a, TestMState)
-runTestM state testM =
-  let (TestM stateT) = testM in runStateT stateT state
-
-assertError :: HasCallStack => Either Error b -> IO ()
-assertError = \case
-  Left _ -> return ()
-  _      -> assertFailure "Error was not raised"
-
-assertRight :: HasCallStack => Either Error a -> IO a
-assertRight = \case
-  Left  error -> assertFailure $ "Error: " ++ (show error)
-  Right x     -> return x
 
 test_varDeclare :: TestTree
 test_varDeclare =
   testCaseSteps "Variable Declaration" $ \step -> do
     step "Declare var"
-    _ <- assertRight $ runTestM initState $ do
+    _ <- assertRight $ runGrammarM initGrammarState $ do
       doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
       mkLValue (spanW "foo")
                (spanW . RExp . ExpNum <$> [1, 2])
 
     step "Redeclare var"
-    assertError $ runTestM initState $ do
+    assertError $ runGrammarM initGrammarState $ do
       doVarDeclare "foo" TypeInt  [1, 2] (Span 0 0)
       doVarDeclare "foo" TypeInt  [2, 2] (Span 0 0)
 
@@ -124,23 +26,23 @@ test_varDeclare =
 test_mkLValue :: TestTree
 test_mkLValue = testCaseSteps "mkLValue" $ \step -> do
   step "Undeclared LValue"
-  assertError $ runTestM initState $ mkLValue
+  assertError $ runGrammarM initGrammarState $ mkLValue
     (spanW "foo")
     []
 
   step "Declared LValue"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkLValue (spanW "foo") []
 
   step "Too many index"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [1, 2, 3] (Span 0 0)
     mkLValue (spanW "foo")
              (spanW . RExp . ExpNum <$> [0, 1, 0, 0])
 
   step "Correct index"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [5, 5] (Span 0 0)
     mkLValue (spanW "foo")
              (spanW . RExp . ExpNum <$> [2, 2])
@@ -149,14 +51,14 @@ test_mkLValue = testCaseSteps "mkLValue" $ \step -> do
 test_stmtAssign :: TestTree
 test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
   step "Assign constant"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     mkStmtAssign (LValue (RExp . ExpNum <$> [1, 2]) "foo")
                  (RExp $ ExpNum 10)
                  (Span 0 0)
 
   step "Assign variable"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     doVarDeclare "bar" TypeInt [] (Span 0 0)
     mkStmtAssign (LValue (RExp . ExpNum <$> [1, 2]) "foo")
@@ -164,21 +66,21 @@ test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
                  (Span 0 0)
 
   step "Assign self"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkStmtAssign (LValue [] "foo")
                  (RLValue $ LValue [] "foo")
                  (Span 0 0)
 
   step "Type mismatch"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeString [5, 10] (Span 0 0)
     mkStmtAssign (LValue (RExp . ExpNum <$> [1, 2]) "foo")
                  (RExp $ ExpNum 10)
                  (Span 0 0)
 
   step "Assign to array"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     doVarDeclare "bar" TypeInt [5, 10] (Span 0 0)
     mkStmtAssign (LValue [] "foo")
@@ -188,26 +90,26 @@ test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
 test_stmtRead :: TestTree
 test_stmtRead = testCaseSteps "StmtRead" $ \step -> do
   step "Read Int"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
    doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
    mkStmtRead $ SpanW
       (LValue (RExp . ExpNum <$> [0, 1]) "foo")
       (Span 0 0)
 
   step "Read String"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeString [5, 10] (Span 0 0)
     mkStmtRead $ SpanW
       (LValue (RExp . ExpNum <$> [0, 1]) "foo")
       (Span 0 0)
 
   step "Read bool"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeBool [5, 10] (Span 0 0)
     mkStmtRead $ SpanW (LValue [] "foo") (Span 0 0)
 
   step "Read array"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [1] (Span 0 0)
     mkStmtRead $ SpanW (LValue [] "foo") (Span 0 0)
 
@@ -215,25 +117,25 @@ test_stmtRead = testCaseSteps "StmtRead" $ \step -> do
 test_stmtWrite :: TestTree
 test_stmtWrite = testCaseSteps "StmtWrite" $ \step -> do
   step "Write Int"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkStmtWrite
       $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
 
   step "Write String"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeString [] (Span 0 0)
     mkStmtWrite
       $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
 
   step "Write Bool"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeBool [] (Span 0 0)
     mkStmtWrite
       $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
 
   step "Write Array"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [1] (Span 0 0)
     mkStmtWrite
       $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
@@ -241,14 +143,14 @@ test_stmtWrite = testCaseSteps "StmtWrite" $ \step -> do
 test_stmtIf :: TestTree
 test_stmtIf = testCaseSteps "StmtIf" $ \step -> do
   step "If Bool"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeBool [] (Span 0 0)
     mkStmtIf
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
       []
 
   step "If non Bool"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkStmtIf
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
@@ -257,7 +159,7 @@ test_stmtIf = testCaseSteps "StmtIf" $ \step -> do
 test_stmtIfElse :: TestTree
 test_stmtIfElse = testCaseSteps "StmtIfElse" $ \step -> do
   step "IfElse Bool"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeBool [] (Span 0 0)
     mkStmtIfElse
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
@@ -265,7 +167,7 @@ test_stmtIfElse = testCaseSteps "StmtIfElse" $ \step -> do
       []
 
   step "IfElse non Bool"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
     mkStmtIfElse
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
@@ -275,14 +177,14 @@ test_stmtIfElse = testCaseSteps "StmtIfElse" $ \step -> do
 test_stmtWhile :: TestTree
 test_stmtWhile = testCaseSteps "StmtWhile" $ \step -> do
   step "While Bool"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeBool [] (Span 0 0)
     mkStmtWhile
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
       []
 
   step "While non Bool"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doVarDeclare "foo" TypeString [] (Span 0 0)
     mkStmtWhile
       (SpanW (RLValue $ LValue [] "foo") (Span 0 0))
@@ -291,30 +193,30 @@ test_stmtWhile = testCaseSteps "StmtWhile" $ \step -> do
 test_stmtBreak :: TestTree
 test_stmtBreak = testCaseSteps "StmtBreak" $ \step -> do
   step "Break Inside Loop"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     pushLoop
     mkStmtBreak (Span 0 0)
 
   step "Break Outside Loop"
-  assertError $ runTestM initState $ mkStmtBreak (Span 0 0)
+  assertError $ runGrammarM initGrammarState $ mkStmtBreak (Span 0 0)
 
 test_stmtContinue :: TestTree
 test_stmtContinue =
   testCaseSteps "StmtContinue" $ \step -> do
     step "Continue Inside Loop"
-    _ <- assertRight $ runTestM initState $ do
+    _ <- assertRight $ runGrammarM initGrammarState $ do
       pushLoop
       mkStmtContinue (Span 0 0)
 
     step "Continue Outside Loop"
-    assertError $ runTestM initState $ mkStmtContinue
+    assertError $ runGrammarM initGrammarState $ mkStmtContinue
       (Span 0 0)
 
 test_funcDeclare :: TestTree
 test_funcDeclare = testCaseSteps "Func Declare" $ \step ->
   do
     step "Declare function"
-    _ <- assertRight $ runTestM initState $ do
+    _ <- assertRight $ runGrammarM initGrammarState $ do
       doFuncDeclare
         TypeInt
         "foo"
@@ -326,7 +228,7 @@ test_funcDeclare = testCaseSteps "Func Declare" $ \step ->
     -- TODO: Check function is actually declared using RValue
 
     step "Redeclare function"
-    assertError $ runTestM initState $ do
+    assertError $ runGrammarM initGrammarState $ do
       doFuncDeclare TypeString "foo" [] (Span 0 0)
       doFuncDeclare TypeString "foo" [] (Span 0 0)
 
@@ -334,7 +236,7 @@ test_funcDefine :: TestTree
 test_funcDefine = testCaseSteps "Func Define" $ \step -> do
 
   step "Declare and define function"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doFuncDeclare TypeInt
                   "foo"
                   (spanW <$> [TypeInt, TypeInt])
@@ -347,7 +249,7 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
     define []
 
   step "Define without declare"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     define <- doFuncDefine
       TypeInt
       "foo"
@@ -358,7 +260,7 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
     define []
 
   step "Redeclare function"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     define <- doFuncDefine
       TypeInt
       "foo"
@@ -369,14 +271,14 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
     define []
     doFuncDeclare TypeString "foo" [] (Span 0 0)
 
-  step "Function declaration mismatch"
-  assertError $ runTestM initState $ do
+  step "Function declaration mismatch - return type"
+  assertError $ runGrammarM initGrammarState $ do
     doFuncDeclare TypeString "foo" [] (Span 0 0)
     _ <- doFuncDefine TypeInt "foo" [] (Span 0 0)
     return ()
 
-  step "Function declaration mismatch"
-  assertError $ runTestM initState $ do
+  step "Function declaration mismatch - args"
+  assertError $ runGrammarM initGrammarState $ do
     doFuncDeclare TypeString "foo" [] (Span 0 0)
     _ <- doFuncDefine TypeString
                       "foo"
@@ -388,19 +290,19 @@ test_mkExpArithmetic :: TestTree
 test_mkExpArithmetic =
   testCaseSteps "Exp Arithmetic" $ \step -> do
     step "Int Int"
-    _ <- assertRight $ runTestM initState $ mkExpArithmetic
+    _ <- assertRight $ runGrammarM initGrammarState $ mkExpArithmetic
       (spanW (RExp $ ExpNum 1))
       OpAdd
       (spanW (RExp $ ExpNum 1))
 
     step "Str Int"
-    assertError $ runTestM initState $ mkExpArithmetic
+    assertError $ runGrammarM initGrammarState $ mkExpArithmetic
       (spanW (RExp $ ExpStr "Foo"))
       OpAdd
       (spanW (RExp $ ExpNum 1))
 
     step "Int Str"
-    assertError $ runTestM initState $ mkExpArithmetic
+    assertError $ runGrammarM initGrammarState $ mkExpArithmetic
       (spanW (RExp $ ExpNum 1))
       OpAdd
       (spanW (RExp $ ExpStr "Foo"))
@@ -411,19 +313,19 @@ test_mkExpLogical :: TestTree
 test_mkExpLogical = testCaseSteps "Exp Logical" $ \step ->
   do
     step "Int Int"
-    _ <- assertRight $ runTestM initState $ mkExpLogical
+    _ <- assertRight $ runGrammarM initGrammarState $ mkExpLogical
       (spanW (RExp $ ExpNum 1))
       OpLT
       (spanW (RExp $ ExpNum 1))
 
     step "Str Str"
-    _ <- assertRight $ runTestM initState $ mkExpLogical
+    _ <- assertRight $ runGrammarM initGrammarState $ mkExpLogical
       (spanW (RExp $ ExpStr "A"))
       OpLT
       (spanW (RExp $ ExpStr "B"))
 
     step "Int Str"
-    assertError $ runTestM initState $ mkExpLogical
+    assertError $ runGrammarM initGrammarState $ mkExpLogical
       (spanW (RExp $ ExpNum 1))
       OpLT
       (spanW (RExp $ ExpStr "B"))
@@ -433,21 +335,21 @@ test_mkExpLogical = testCaseSteps "Exp Logical" $ \step ->
 test_mkExpFuncCall :: TestTree
 test_mkExpFuncCall = testCaseSteps "mkExpFuncCall" $ \step -> do
   step "Undeclared function"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     mkExpFuncCall "foo" [] (Span 0 0)
 
   step "Declared function"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doFuncDeclare TypeInt "foo" [] (Span 0 0)
     mkExpFuncCall "foo" [] (Span 0 0)
 
   step "arg type mismatch"
-  assertError $ runTestM initState $ do
+  assertError $ runGrammarM initGrammarState $ do
     doFuncDeclare TypeInt "foo" ( spanW <$> [TypeInt] ) (Span 0 0)
     mkExpFuncCall "foo" ( spanW . RExp . ExpNum <$> [1, 2] ) (Span 0 0)
 
   step "assign to var"
-  _ <- assertRight $ runTestM initState $ do
+  _ <- assertRight $ runGrammarM initGrammarState $ do
     doVarDeclare "bar" TypeInt [] (Span 0 0)
     doFuncDeclare TypeInt "foo" [] (Span 0 0)
     exp <- mkExpFuncCall "foo" [] (Span 0 0)
