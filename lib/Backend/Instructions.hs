@@ -32,6 +32,7 @@ data XSMInstr
   | XSM_JNZ Reg Int
   | XSM_JMP Int
   | XSM_INT Int
+  | XSM_NOP
   | XSM_UTJ UntranslatedJump
   deriving (Show)
 
@@ -86,6 +87,7 @@ toString instr = case instr of
   XSM_JNZ   r1 i                -> "JNZ " ++ show r1 ++ ", " ++ show i
   XSM_JMP i                     -> "JMP " ++ show i
   XSM_INT i                     -> "INT " ++ show i
+  XSM_NOP                       -> "NOP"
   XSM_UTJ (XSM_UTJ_JMP label  ) -> "JMP " ++ label
   XSM_UTJ (XSM_UTJ_JNZ r label) -> "JNZ " ++ show r ++ ", " ++ label
   XSM_UTJ (XSM_UTJ_JZ  r label) -> "JZ " ++ show r ++ ", " ++ label

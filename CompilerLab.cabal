@@ -29,11 +29,8 @@ executable CompilerLab
     src
 
   other-modules:
-    Backend.CodeUtils
     Backend.Codegen
-    Backend.Compiler
     Backend.Instructions
-    Backend.Main
     Backend.Reg
     Backend.Simulator
     Error
@@ -78,11 +75,8 @@ test-suite test
     Main.hs
 
   other-modules:
-    Backend.CodeUtils
     Backend.Codegen
-    Backend.Compiler
     Backend.Instructions
-    Backend.Main
     Backend.Reg
     Backend.Simulator
     Error
@@ -92,7 +86,6 @@ test-suite test
     LoopStack
     Parser
     Span
-    Test.Backend.CodeUtils
     Test.Backend.Codegen
     Test.Backend.Simulator
     Test.Grammar

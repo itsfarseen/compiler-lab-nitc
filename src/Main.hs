@@ -7,7 +7,8 @@ import System.Exit
 import System.FilePath
 import System.IO
 
-import qualified Backend.Main as Backend
+import Backend.Codegen as Codegen
+import Backend.Instructions
 import Error (Error)
 import Frontend
 import qualified Grammar
@@ -26,13 +27,35 @@ frontend = do
   symbols <- gets Frontend.symbols
   return (program, symbols)
 
+backend mode program = do
+  execSetupGlobalSymtab
+  execProgram program
+  code <- case mode of
+    CodeOutputTranslated -> do
+      code <- getCodeTranslated
+      return $ map toString code
+    CodeOutputTranslatedWithAddress -> do
+      code <- getCodeTranslated
+      let codeNumbered = zip [codeStartAddr,codeStartAddr+2..] code
+      return $ map (\(i, c) -> (show i) ++ ":\t" ++ (show c)) codeNumbered
+    CodeOutputUntranslated -> do
+      codeLabelled <- getCodeLabelled
+      return $ map (\(i, c) -> (show i) ++ ":\t" ++ (show c)) codeLabelled
+  return $ unlines (xexeHeader ++ code)
+
+data CodeOutputMode
+  = CodeOutputTranslated
+  | CodeOutputTranslatedWithAddress
+  | CodeOutputUntranslated
+  deriving (Eq)
+
 main :: IO ()
 main = do
   args_ <- getArgs
   let (codeOutputMode, args) = case args_ of
-        ("-u" : args') -> (Backend.CodeOutputUntranslated, args')
-        ("-n" : args') -> (Backend.CodeOutputTranslatedWithAddress, args')
-        _              -> (Backend.CodeOutputTranslated, args_)
+        ("-u" : args') -> (CodeOutputUntranslated, args')
+        ("-n" : args') -> (CodeOutputTranslatedWithAddress, args')
+        _              -> (CodeOutputTranslated, args_)
 
   (inputFile, outputFile) <- case args of
     [inputFile] -> return (inputFile, replaceExtension inputFile ".xsm")
@@ -44,7 +67,7 @@ main = do
   handleError input inputFile $ do
     (program, symbols) <- liftEither
       $ Frontend.runFrontend (Frontend.initData input) frontend
-    output <- liftEither $ Backend.main program codeOutputMode symbols
+    output <- liftEither $ Codegen.runCodegen (backend codeOutputMode program) symbols
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()

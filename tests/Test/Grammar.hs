@@ -112,7 +112,6 @@ test_stmtRead = testCaseSteps "StmtRead" $ \step -> do
     doVarDeclare "foo" TypeInt [1] (Span 0 0)
     mkStmtRead $ SpanW (LValue [] "foo") (Span 0 0)
 
-
 test_stmtWrite :: TestTree
 test_stmtWrite = testCaseSteps "StmtWrite" $ \step -> do
   step "Write Int"

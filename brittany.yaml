@@ -40,7 +40,7 @@ conf_layout:
   lconfig_alignmentBreakOnMultiline: true
   lconfig_experimentalSemicolonNewlines: false
   lconfig_cols: 70
-  lconfig_indentPolicy: IndentPolicyFree
+  lconfig_indentPolicy: IndentPolicyLeft
   lconfig_indentWhereSpecial: true
   lconfig_columnAlignMode:
     tag: ColumnAlignModeMajority
