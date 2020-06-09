@@ -15,7 +15,7 @@ import qualified Data.HashMap.Strict as HM
 import Control.Monad.State.Strict
 import Error
 import Span
-import Control.Monad.Except hiding (Error)
+import Control.Monad.Except
 import Data.Maybe (fromJust)
 import Data.List (find)
 
@@ -29,8 +29,8 @@ data CodegenState =
     , lastLabelNo :: Int
     , loopBreakLabels :: [String]
     , loopContinueLabels :: [String]
-    , symbols :: [Symbol]
-    , symbolsSize :: Int
+    , gSymbols :: [Symbol]
+    , gSymbolsSize :: Int
     }
 
 data Symbol =
@@ -49,22 +49,22 @@ data Symbol =
 -- }
 
 runCodegen :: Codegen a -> [Grammar.Symbol] -> Either Error a
-runCodegen compiler symbols =
-  evalStateT compiler (initCodegenState symbols)
+runCodegen compiler gSymbols =
+  evalStateT compiler (initCodegenState gSymbols)
 
 
 initCodegenState :: [Grammar.Symbol] -> CodegenState
-initCodegenState symbols = CodegenState
+initCodegenState gSymbols = CodegenState
   { freeRegs           = [R0 .. R19]
   , code               = []
   , labels             = HM.empty
   , lastLabelNo        = 0
   , loopBreakLabels    = []
   , loopContinueLabels = []
-  , symbols            = symbolTable
-  , symbolsSize        = locNext
+  , gSymbols           = symbolTable
+  , gSymbolsSize       = locNext
   }
-  where (symbolTable, locNext) = buildSymbolTable symbols 0 0
+  where (symbolTable, locNext) = buildSymbolTable gSymbols 0 0
 
 buildSymbolTable :: [Grammar.Symbol] -> Int -> Int -> ([Symbol], Int)
 buildSymbolTable symbols locLast locNext = case symbols of
@@ -135,8 +135,8 @@ prependLabels code i labels =
 
 execSetupGlobalSymtab :: Codegen ()
 execSetupGlobalSymtab = do
-  symbolsSize <- gets symbolsSize
-  appendCode [XSM_MOV_Int SP 4096, XSM_ADD_I SP symbolsSize]
+  gSymbolsSize <- gets gSymbolsSize
+  appendCode [XSM_MOV_Int SP 4096, XSM_ADD_I SP gSymbolsSize]
 
 execProgram :: Program -> Codegen ()
 execProgram program = do
@@ -354,19 +354,21 @@ logicOpInstr op = case op of
 
 getSymbol :: String -> Codegen Symbol
 getSymbol name = do
-  symbols <- gets symbols
-  return $ fromJust $ find (\sym -> symName sym == name) symbols
+  gSymbols <- gets gSymbols
+  return $ fromJust $ find (\sym -> symName sym == name) gSymbols
 
 getSymbolDataType :: String -> Codegen DataType
 getSymbolDataType name = symDataType <$> getSymbol name
 
+getSymbolLocInStack :: MonadState CodegenState f => String -> f Int
 getSymbolLocInStack identName = (4096 +) <$> gets
   ( symRelLoc
   . fromJust
   . find (\s -> symName s == identName)
-  . symbols
+  . gSymbols
   )
 
+getFreeReg :: StateT CodegenState (Either Error) Reg
 getFreeReg = do
   compiler <- get
   case freeRegs compiler of
@@ -376,21 +378,25 @@ getFreeReg = do
     [] ->
       throwError $ Error.compilerError "out of registers" (Span 0 0)
 
+releaseReg :: Reg -> Codegen ()
 releaseReg reg = do
   compiler <- get
   put compiler { freeRegs = pushFreeReg (freeRegs compiler) reg }
   where pushFreeReg regs r = r : regs
 
+appendCode :: [XSMInstr] -> Codegen ()
 appendCode getInstrs' = do
   compiler <- get
   put compiler { code = code compiler ++ getInstrs' }
 
+getNewLabel :: StateT CodegenState (Either Error) [Char]
 getNewLabel = do
   compiler <- get
   let newLabelNo = lastLabelNo compiler + 1
   put compiler { lastLabelNo = newLabelNo }
   return $ "L" ++ show newLabelNo
 
+installLabel :: String -> Codegen ()
 installLabel label = do
   compiler <- get
   let nextLineNo = length (code compiler)
@@ -398,26 +404,32 @@ installLabel label = do
     { labels = HM.insert label nextLineNo (labels compiler)
     }
 
+pushLoopBreakLabel :: String -> Codegen ()
 pushLoopBreakLabel label = do
   compiler <- get
   put compiler
     { loopBreakLabels = loopBreakLabels compiler ++ [label]
     }
 
+peekLoopBreakLabel :: StateT CodegenState (Either Error) String
 peekLoopBreakLabel = gets (last . loopBreakLabels)
 
+popLoopBreakLabel :: StateT CodegenState (Either Error) ()
 popLoopBreakLabel = do
   compiler <- get
   put compiler { loopBreakLabels = init (loopBreakLabels compiler) }
 
+pushLoopContinueLabel :: String -> Codegen ()
 pushLoopContinueLabel label = do
   compiler <- get
   put compiler
     { loopContinueLabels = loopContinueLabels compiler ++ [label]
     }
 
+peekLoopContinueLabel :: StateT CodegenState (Either Error) String
 peekLoopContinueLabel = gets (last . loopContinueLabels)
 
+popLoopContinueLabel :: StateT CodegenState (Either Error) ()
 popLoopContinueLabel = do
   compiler <- get
   put compiler
