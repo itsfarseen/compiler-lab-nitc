@@ -69,7 +69,7 @@ main = do
   handleError input inputFile $ do
     (funcs, symbols) <- liftEither
       $ Frontend.runFrontend (Frontend.initData input) frontend
-    output <- liftEither $ Codegen.runCodegen (backend codeOutputMode) symbols funcs
+    output <- liftEither $ Codegen.runCodegen (backend codeOutputMode) (initCodegenState symbols funcs)
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()
