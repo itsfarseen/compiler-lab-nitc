@@ -52,6 +52,7 @@ $sq_bracket_close = \]
 @do          = "do"
 @break       = "break"
 @continue    = "continue"
+@return      = "return"
 @int         = "int"
 @string      = "string"
 @bool        = "bool"
@@ -59,10 +60,12 @@ $sq_bracket_close = \]
 @number      = [0-9]+
 @strlit      = \"[^\"]*\"
 @ident       = [a-z_][a-z0-9_]*
+@skip        ="decl|enddecl|begin|end|type|endtype"
 
 tokens :-
     $white+      ;
-    
+    @skip        ;
+
     $plus        {token TokenPlus}
     $minus       {token TokenMinus}
     $star        {token TokenStar}
@@ -100,6 +103,7 @@ tokens :-
     @do          {token TokenDo}
     @break       {token TokenBreak}
     @continue    {token TokenContinue}
+    @return      {token TokenReturn}
     @int         {token TokenInt}
     @string      {token TokenString}
     @bool        {token TokenBool}
@@ -145,7 +149,7 @@ alexInputPrevChar = undefined -- our tokens' regexes don't need prev char
 --       !AlexInput     -- Remaining input
 --       !Int           -- Token length
 
---   | AlexToken  
+--   | AlexToken
 --       !AlexInput     -- Remaining input
 --       !Int           -- Token length
 --       action         -- action value
@@ -160,7 +164,7 @@ readToken = do
       do
         putAlexInput $ alexInput'
         readToken
-    AlexToken alexInput' len tk 
+    AlexToken alexInput' len tk
       -> do
         putAlexInput $ alexInput'
         return (tk (decode $ take len alexInputStr) (Span alexTokenOffset len))

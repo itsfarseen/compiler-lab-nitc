@@ -16,8 +16,6 @@ import           Error (Error)
 import qualified Error
 import           Span
 
-newtype Program = Program {stmts :: [Stmt]}
-
 data Stmt
   = StmtAssign StmtAssign
   | StmtRead StmtRead
@@ -27,7 +25,8 @@ data Stmt
   | StmtWhile StmtWhile
   | StmtBreak StmtBreak
   | StmtContinue StmtContinue
-  | StmtRValue RValue -- For function calls which is both an RValue and Statement
+  | StmtRValue StmtRValue -- For function calls which is both an RValue and Statement
+  | StmtReturn StmtReturn
   deriving (Show, Eq)
 
 data StmtAssign
@@ -62,13 +61,25 @@ data StmtContinue
   = MkStmtContinue
   deriving (Show, Eq)
 
+data StmtReturn =
+  MkStmtReturn RValue
+  deriving (Show, Eq)
+
+data StmtRValue =
+  MkStmtRValue RValue
+  deriving (Show, Eq)
+
 data LValue
   = LValue
       [RValue] -- Indices, empty if simple ident
       String
   deriving (Show, Eq)
 
-data RValue = RLValue LValue | RExp Exp | RFuncCall String [RValue] deriving (Show, Eq)
+data RValue
+  = RLValue LValue
+  | RExp Exp
+  | RFuncCall String [RValue]
+  deriving (Show, Eq)
 
 data Exp
   = ExpNum Int
@@ -77,17 +88,29 @@ data Exp
   | MkExpLogical RValue OpLogical RValue
   deriving (Show, Eq)
 
-data OpArithmetic = OpAdd | OpSub | OpMul | OpDiv | OpMod
+data OpArithmetic
+  = OpAdd
+  | OpSub
+  | OpMul
+  | OpDiv
+  | OpMod
   deriving (Show, Eq)
 
-data OpLogical = OpLT | OpGT | OpLE | OpGE | OpEQ | OpNE
+data OpLogical
+  = OpLT
+  | OpGT
+  | OpLE
+  | OpGE
+  | OpEQ
+  | OpNE
   deriving (Show, Eq)
 
-data Symbol
-  = Symbol { symName     :: String
-           , symDataType :: DataType
-           , symDeclSpan :: Span
-           }
+data Symbol =
+  Symbol
+    { symName :: String
+    , symDataType :: DataType
+    , symDeclSpan :: Span
+    }
   deriving (Show, Eq)
 
 data Func
@@ -108,8 +131,8 @@ data FuncDecl
 
 data FuncDef
   = FuncDef { funcBody      :: [Stmt]
-            , funcArgs      :: [String]
-            , funcLocalVars :: [Symbol]
+            , funcArgsLen   :: Int
+            , funcSyms :: [Symbol]
             , funcDefSpan   :: Span
             }
 
@@ -122,17 +145,18 @@ data DataType
       PrimitiveType
   deriving (Eq)
 
-doVarDeclare
-  :: (MonadError Error m, ReadSymbols m, WriteSymbols m)
-  => String
-  -> PrimitiveType
-  -> [Int]
-  -> Span
-  -> m ()
+doVarDeclare :: (FunctionContext m, MonadError Error m, ReadSymbols m, WriteSymbols m) => String -> PrimitiveType -> [Int] -> Span -> m ()
 doVarDeclare identName primType dims span = do
-  symLookup identName >>= throwSymbolExists
-  symInsert symbol
-  return $ ()
+  fcHasCtxt <- fcHasCtxt
+  if fcHasCtxt
+    then do
+      fcSymLookup identName >>= throwSymbolExists
+      fcSymInsert symbol
+      return $ ()
+    else do
+      symLookup identName >>= throwSymbolExists
+      symInsert symbol
+      return $ ()
  where
   dataType = DataType dims primType
   symbol   = Symbol
@@ -145,8 +169,9 @@ doVarDeclare identName primType dims span = do
     Just sym -> throwError
       $ errIdentifierRedeclared identName (symDeclSpan sym) span
 
+
 mkStmtAssign
-  :: (MonadError Error m, ReadSymbols m, ReadFuncs m)
+  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
   => LValue
   -> RValue
   -> Span
@@ -167,7 +192,7 @@ mkStmtAssign lhs rhs span = do
   return $ MkStmtAssign lhs rhs
 
 mkStmtRead
-  :: (MonadError Error m, ReadSymbols m) => SpanW LValue -> m StmtRead
+  :: (MonadError Error m, ReadSymbols m, FunctionContext m) => SpanW LValue -> m StmtRead
 mkStmtRead (SpanW lValue lValueSpan) = do
   dataType <- lValueDataType lValue
   let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
@@ -177,7 +202,7 @@ mkStmtRead (SpanW lValue lValueSpan) = do
   return $ MkStmtRead lValue
 
 mkStmtWrite
-  :: (MonadError Error m, ReadSymbols m, ReadFuncs m)
+  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
   => SpanW RValue
   -> m StmtWrite
 mkStmtWrite (SpanW rValue rValueSpan) = do
@@ -189,7 +214,7 @@ mkStmtWrite (SpanW rValue rValueSpan) = do
   return $ MkStmtWrite rValue
 
 mkStmtIf
-  :: (MonadError Error m, ReadSymbols m, ReadFuncs m)
+  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
   => SpanW RValue
   -> [Stmt]
   -> m StmtIf
@@ -201,7 +226,7 @@ mkStmtIf (SpanW cond span) body = do
   return $ MkStmtIf cond body
 
 mkStmtIfElse
-  :: (MonadError Error m, ReadSymbols m, ReadFuncs m)
+  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
   => SpanW RValue
   -> [Stmt]
   -> [Stmt]
@@ -214,7 +239,7 @@ mkStmtIfElse (SpanW cond span) thenBody elseBody = do
   return $ MkStmtIfElse cond thenBody elseBody
 
 mkStmtWhile
-  :: (MonadError Error m, ReadSymbols m, ReadFuncs m)
+  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
   => SpanW RValue
   -> [Stmt]
   -> m StmtWhile
@@ -238,6 +263,30 @@ mkStmtContinue span = do
   unlessM hasLoop throwOutOfLoop
   return $ MkStmtContinue
   where throwOutOfLoop = throwError (Error.syntaxError span)
+
+mkStmtRValue :: Monad m => RValue -> m StmtRValue
+mkStmtRValue rValue = do
+  return $ MkStmtRValue rValue
+
+mkStmtReturn
+  :: ( FunctionContext m
+     , MonadError Error m
+     , ReadSymbols m, FunctionContext m
+     , ReadFuncs m
+     )
+  => RValue
+  -> Span
+  -> m StmtReturn
+mkStmtReturn rValue span = do
+  funcDecl <- fcGet
+  let retType = DataType [] (funcRetType funcDecl)
+  rValueType <- rValueDataType rValue
+  unless (retType == rValueType) $ throwError $ errTypeMismatch
+    retType
+    (funcDeclSpan funcDecl)
+    rValueType
+    span
+  return $ MkStmtReturn rValue
 
 doFuncDeclare
   :: (MonadError Error m, WriteFuncs m)
@@ -269,7 +318,7 @@ doFuncDefine
   :: ( MonadError Error m
      , WriteFuncs m
      , WriteSymbols m
-     , SymbolTableStack m
+     , FunctionContext m
      )
   => PrimitiveType
   -> String
@@ -282,7 +331,7 @@ doFuncDefine retType name args span = do
     >>= throwRedefined
     >>= (throwMismatch retType name args)
     >>= declareIfNotDeclared
-  symStackPush
+  fcEnter funcDecl
   flip mapM_ args $ \(SpanW (name, primType) span) ->
     symInsert $ Symbol
       { symName     = name
@@ -290,13 +339,13 @@ doFuncDefine retType name args span = do
       , symDeclSpan = span
       }
   return $ \stmts -> do
-    localVars <- symStackPop
+    syms <- fcExit
     let
       funcDef = FuncDef
-        { funcArgs      = fst . spanWVal <$> args
-        , funcLocalVars = localVars
-        , funcBody      = stmts
-        , funcDefSpan   = span
+        { funcArgsLen = length args
+        , funcSyms    = syms
+        , funcBody    = stmts
+        , funcDefSpan = span
         }
     funcInsert (FuncDefined funcDecl funcDef)
  where
@@ -328,12 +377,16 @@ doFuncDefine retType name args span = do
     Just f -> return f
 
 mkLValue
-  :: (MonadError Error m, ReadSymbols m, ReadFuncs m)
+  :: ( FunctionContext m
+     , ReadSymbols m, FunctionContext m
+     , MonadError Error m
+     , ReadFuncs m
+     )
   => SpanW String
   -> [SpanW RValue]
   -> m LValue
 mkLValue (SpanW identName identSpan) indices = do
-  sym <- symLookup identName >>= \case
+  sym <- symLookupCombined identName >>= \case
     Nothing ->
       throwError (errIdentifierNotDeclared identName identSpan)
     Just sym -> return sym
@@ -351,7 +404,7 @@ mkLValue (SpanW identName identSpan) indices = do
   return $ LValue indices' identName
 
 mkExpFuncCall
-  :: (ReadFuncs m, ReadSymbols m, MonadError Error m)
+  :: (ReadFuncs m, ReadSymbols m, FunctionContext m, MonadError Error m)
   => String
   -> [SpanW RValue]
   -> Span
@@ -371,7 +424,7 @@ mkExpFuncCall funcName args span = do
           do
             argType <- rValueDataType arg
             let (DataType dims argPrimType) = argType
-            unless (length dims /= 0) $ throwError $ errTypeNotAllowed
+            unless (length dims == 0) $ throwError $ errTypeNotAllowed
               [DataType [] TypeInt, DataType [] TypeString]
               argType
               argSpan
@@ -392,7 +445,7 @@ mkExpFuncCall funcName args span = do
     Just sym -> return sym
 
 mkExpArithmetic
-  :: (ReadSymbols m, ReadFuncs m, MonadError Error m)
+  :: (ReadSymbols m, FunctionContext m, ReadFuncs m, MonadError Error m)
   => SpanW RValue
   -> OpArithmetic
   -> SpanW RValue
@@ -407,7 +460,7 @@ mkExpArithmetic (SpanW r1 span1) op (SpanW r2 span2) = do
   return $ MkExpArithmetic r1 op r2
 
 mkExpLogical
-  :: (ReadSymbols m, ReadFuncs m, MonadError Error m)
+  :: (ReadSymbols m, FunctionContext m, ReadFuncs m, MonadError Error m)
   => SpanW RValue
   -> OpLogical
   -> SpanW RValue
@@ -435,22 +488,31 @@ mkExpLogical (SpanW r1 span1) op (SpanW r2 span2) = do
 
 -- Helper Functions
 
+symLookupCombined
+  :: (ReadSymbols m, FunctionContext m) => String -> m (Maybe Symbol)
+symLookupCombined name = do
+  fcHasCtxt <- fcHasCtxt
+  lSym <- if fcHasCtxt then fcSymLookup name else return $ Nothing
+  case lSym of
+    Just sym -> return $ Just sym
+    Nothing  -> symLookup name
+
 lValueDataType
-  :: (MonadError Error m, ReadSymbols m) => LValue -> m DataType
+  :: (FunctionContext m, ReadSymbols m, FunctionContext m) => LValue -> m DataType
 lValueDataType (LValue indices identName) = do
   (DataType dims primType) <-
-    symDataType . fromJust <$> symLookup identName
+    symDataType . fromJust <$> symLookupCombined identName
 
   let dims' = drop (length indices) dims
   return $ DataType dims' primType
 
 lValueDeclSpan
-  :: (MonadError Error m, ReadSymbols m) => LValue -> m Span
+  :: (FunctionContext f, ReadSymbols f) => LValue -> f Span
 lValueDeclSpan (LValue _ identName) = do
-  symDeclSpan . fromJust <$> symLookup identName
+  symDeclSpan . fromJust <$> symLookupCombined identName
 
 rValueDataType
-  :: (MonadError Error m, ReadSymbols m, ReadFuncs m)
+  :: (FunctionContext m, ReadSymbols m, FunctionContext m, ReadFuncs m)
   => RValue
   -> m DataType
 rValueDataType (RLValue v  ) = lValueDataType v
@@ -489,9 +551,13 @@ class Monad m => ReadSymbols m where
 class Monad m => WriteSymbols m where
   symInsert :: Symbol -> m ()
 
-class Monad m => SymbolTableStack m where
-  symStackPush :: m ()
-  symStackPop :: m [Symbol]
+class Monad m => FunctionContext m where
+  fcEnter :: FuncDecl -> m ()
+  fcHasCtxt :: m Bool
+  fcGet :: m FuncDecl
+  fcSymInsert :: Symbol -> m ()
+  fcSymLookup :: String -> m (Maybe Symbol)
+  fcExit :: m [Symbol]
 
 class Monad m => ReadFuncs m where
   funcLookup :: String -> m (Maybe Func)

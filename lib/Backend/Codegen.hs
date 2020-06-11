@@ -1,29 +1,33 @@
+{-# LANGUAGE PartialTypeSignatures #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE RecordWildCards #-}
 
 module Backend.Codegen where
 
 import Backend.Instructions
 import Backend.Reg
 import Data.List (sortOn)
-import qualified Grammar
-import Grammar hiding (Symbol(..))
+import qualified Grammar as G
+import Grammar hiding (Symbol(..), Func(..), FuncDecl(..), FuncDef(..))
 import qualified Data.HashMap.Strict as HM
 import Control.Monad.State.Strict
 import Error
 import Span
 import Control.Monad.Except
-import Data.Maybe (fromJust)
 import Data.List (find)
+import Data.Maybe (fromJust)
+-- import Debug.Trace
 
 type Codegen = StateT CodegenState (Either Error)
 
 data CodegenState =
   CodegenState
     { freeRegs :: [Reg]
+    , usedRegs :: [Reg]
     , code :: [XSMInstr]
     , labels :: HM.HashMap String Int
     , lastLabelNo :: Int
@@ -31,58 +35,115 @@ data CodegenState =
     , loopContinueLabels :: [String]
     , gSymbols :: [Symbol]
     , gSymbolsSize :: Int
+    , funcs :: [Func]
+    , lSymbols :: Maybe [Symbol]
     }
 
 data Symbol =
   Symbol
-    {
-      symName :: String
-    , symDataType :: Grammar.DataType
+    { symName :: String
+    , symDataType :: G.DataType
     , symRelLoc :: Int
     }
 
--- data Func = Func {
---     funcName :: String
---   , funcBody :: [Grammar.Stmt]
---   , funcArgs :: [Symbol]
---   , funcLocalVars :: [Symbol]
--- }
+data Func = Func {
+    funcName :: String
+  , funcRetType :: PrimitiveType
+  , funcBody :: [Stmt]
+  , funcSymbols :: [Symbol]
+  , funcLocalVarsSize :: Int
+  , funcLabel :: String
+}
 
-runCodegen :: Codegen a -> [Grammar.Symbol] -> Either Error a
-runCodegen compiler gSymbols =
-  evalStateT compiler (initCodegenState gSymbols)
+runCodegen :: Codegen a -> CodegenState -> Either Error a
+runCodegen compiler state =
+  evalStateT compiler state
 
 
-initCodegenState :: [Grammar.Symbol] -> CodegenState
-initCodegenState gSymbols = CodegenState
+initCodegenState :: [G.Symbol] -> [G.Func] -> CodegenState
+initCodegenState symbols funcs = initCodegenStateInternal
+  gSymbols
+  gSymbolsSize
+  funcs'
+ where
+  (gSymbols, gSymbolsSize) = buildSymbolTable symbols 0
+  funcs'                   = buildFuncsTable funcs 0
+
+initCodegenStateInternal :: [Symbol] -> Int -> [Func] -> CodegenState
+initCodegenStateInternal gSymbols gSymbolsSize funcs = CodegenState
   { freeRegs           = [R0 .. R19]
+  , usedRegs           = []
   , code               = []
   , labels             = HM.empty
   , lastLabelNo        = 0
   , loopBreakLabels    = []
   , loopContinueLabels = []
-  , gSymbols           = symbolTable
-  , gSymbolsSize       = locNext
+  , gSymbols
+  , gSymbolsSize
+  , lSymbols           = Nothing
+  , funcs
   }
-  where (symbolTable, locNext) = buildSymbolTable gSymbols 0 0
 
-buildSymbolTable :: [Grammar.Symbol] -> Int -> Int -> ([Symbol], Int)
-buildSymbolTable symbols locLast locNext = case symbols of
-  [] -> ([], locLast)
-  (sym : syms) ->
+buildSymbolTable :: [G.Symbol] -> Int -> ([Symbol], Int)
+buildSymbolTable symbols locBase =
+  let
+    sentinel = (error "sentinel", locBase)
+    syms'    = scanl f sentinel symbols
+  in (map fst (tail syms'), snd $ last syms')
+ where
+  f prev cur =
     let
-      Grammar.Symbol { Grammar.symName, Grammar.symDataType } = sym
-      Grammar.DataType dims _ = symDataType
-      size                    = product dims
-      loc                     = locNext
-      (syms', locLast)        = buildSymbolTable syms loc (loc + size)
+      G.Symbol { G.symName, G.symDataType } = cur
+      loc = snd prev
     in
-      ( (Symbol { symName, symDataType, symRelLoc = loc } : syms')
-      , locLast
+      ( Symbol { symName, symDataType, symRelLoc = loc }
+      , loc + (dataTypeSize symDataType)
       )
+  dataTypeSize (DataType dims _) = product dims
 
+buildFuncsTable :: [G.Func] -> Int -> [Func]
+buildFuncsTable funcs i = case funcs of
+  []           -> []
+  (f : funcs') -> (toFunc f) : (buildFuncsTable funcs' (i + 1))
+ where
+  toFunc f = case f of
+    G.FuncDeclared G.FuncDecl { funcName } ->
+      error $ "Function declared, but not defined: " ++ funcName
+    G.FuncDefined G.FuncDecl { funcName, funcRetType } G.FuncDef { funcBody, funcArgsLen, funcSyms }
+      -> let
+           (args, localVars)     = splitAt (funcArgsLen) funcSyms
+           args'                 = buildFuncArgsTable args (-2)
+           (localVars', locNext) = buildSymbolTable localVars 1
+         in Func
+           { funcName
+           , funcRetType
+           , funcBody
+           , funcSymbols       = args' ++ localVars'
+           , funcLocalVarsSize = locNext - 1
+           , funcLabel         = "F" ++ (show i)
+           }
+
+buildFuncArgsTable :: [G.Symbol] -> Int -> [Symbol]
+buildFuncArgsTable symbols locBase =
+  let
+    sentinel = Symbol
+      { symName     = error "sentinel"
+      , symDataType = error "sentinel"
+      , symRelLoc   = locBase
+      }
+  in init $ scanr f sentinel symbols
+ where
+  f cur prev =
+    let
+      G.Symbol { G.symName, G.symDataType } = cur
+      G.DataType dims _ = symDataType
+      size              = product dims
+      -- curLoc + curSize = prevLoc
+      curLoc            = symRelLoc prev - size
+    in Symbol { symName, symDataType, symRelLoc = curLoc }
 
 --
+
 codeStartAddr :: Int
 codeStartAddr = 2056
 
@@ -100,7 +161,7 @@ getCodeLabelled :: Codegen [(String, XSMInstr)]
 getCodeLabelled = do
   code   <- gets code
   labels <- gets (HM.toList . labels)
-  return $ prependLabels code codeStartAddr labels
+  return $ prependLabels code 0 labels
 
 labelTranslate
   :: Int -> [XSMInstr] -> HM.HashMap String Int -> [XSMInstr]
@@ -112,6 +173,7 @@ labelTranslate offset instrs labels = map
         loc   = labels HM.! label
         loc'  = (loc * 2) + offset
       in utjTranslate jmp loc'
+      -- s = "label: " ++ label ++ "; loc: " ++ (show loc) ++ "; loc': " ++ (show loc')
     _ -> instr
   )
   instrs
@@ -138,10 +200,37 @@ execSetupGlobalSymtab = do
   gSymbolsSize <- gets gSymbolsSize
   appendCode [XSM_MOV_Int SP 4096, XSM_ADD_I SP gSymbolsSize]
 
-execProgram :: Program -> Codegen ()
-execProgram program = do
-  let (Program stmts) = program
-  mapM_ execStmt stmts
+
+
+execCallMainFunc :: Codegen ()
+execCallMainFunc = do
+  funcs <- gets funcs
+  let
+    mainFunc = case find (\f -> funcName f == "main") funcs of
+      Just f  -> f
+      Nothing -> error "main function not defined"
+  -- execFuncDef mainFunc
+  -- mapM_ execFuncDef (filter (\f -> funcName f /= "main") funcs)
+  appendCode [XSM_UTJ $ XSM_UTJ_CALL (funcLabel mainFunc)]
+  appendCode [XSM_INT 10]
+
+execFuncDefs :: Codegen ()
+execFuncDefs = do
+  funcs <- gets funcs
+  mapM_ execFuncDef funcs
+
+execFuncDef :: Func -> Codegen ()
+execFuncDef func = do
+  installLabel (funcLabel func)
+  modify (\s -> s { lSymbols = Just $ funcSymbols func })
+  appendCode [XSM_PUSH BP]
+  appendCode [XSM_MOV_R BP SP]
+  appendCode [XSM_ADD_I SP (funcLocalVarsSize func)]
+  mapM_ execStmt (funcBody func)
+  appendCode [XSM_MOV_R SP BP]
+  appendCode [XSM_POP BP]
+  appendCode [XSM_RET]
+  modify (\s -> s { lSymbols = Nothing })
 
 execStmt :: Stmt -> Codegen ()
 execStmt stmt = case stmt of
@@ -153,6 +242,8 @@ execStmt stmt = case stmt of
   StmtWhile    stmt -> execStmtWhile stmt
   StmtBreak    stmt -> execStmtBreak stmt
   StmtContinue stmt -> execStmtContinue stmt
+  StmtReturn   stmt -> execStmtReturn stmt
+  StmtRValue   stmt -> execStmtRValue stmt
 
 execStmtAssign :: StmtAssign -> Codegen ()
 execStmtAssign stmt = do
@@ -253,6 +344,26 @@ execStmtContinue _ = do
   endLabel <- peekLoopContinueLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JMP endLabel]
 
+execStmtReturn :: StmtReturn -> Codegen ()
+execStmtReturn stmt = do
+  let (MkStmtReturn rValue) = stmt
+  r1 <- getRValueInReg rValue
+  t  <- getFreeReg
+  appendCode [XSM_MOV_R t BP]
+  appendCode [XSM_SUB_I t 2]
+  appendCode [XSM_MOV_IndDst t r1]
+  releaseReg t
+  releaseReg r1
+  appendCode [XSM_MOV_R SP BP]
+  appendCode [XSM_POP BP]
+  appendCode [XSM_RET]
+
+execStmtRValue :: StmtRValue -> Codegen ()
+execStmtRValue stmt = do
+  let (MkStmtRValue rValue) = stmt
+  r1 <- getRValueInReg rValue
+  releaseReg r1
+
 printReg :: Reg -> Codegen ()
 printReg reg = do
   t1 <- getFreeReg
@@ -284,18 +395,16 @@ getLValueLocInReg lValue = do
  where
   getLValueLocInReg'
     :: [Int] -> [RValue] -> String -> Codegen (Reg, Int)
-  getLValueLocInReg' dims indices identName = case (dims, indices) of
+  getLValueLocInReg' dims indices symName = case (dims, indices) of
     ([], []) -> do
-      reg <- getFreeReg
-      loc <- getSymbolLocInStack identName
-      appendCode [XSM_MOV_Int reg loc]
+      reg <- getSymbolLocInReg symName
       return (reg, 1)
     ([]    , _ : _) -> error $ "Codegen bug: Too many indices "
     (d : ds, []   ) -> do
-      (reg, innerSize) <- getLValueLocInReg' ds indices identName
+      (reg, innerSize) <- getLValueLocInReg' ds indices symName
       return (reg, innerSize * d)
     (d : ds, i : is) -> do
-      (reg, innerSize) <- getLValueLocInReg' ds is identName
+      (reg, innerSize) <- getLValueLocInReg' ds is symName
       rhs              <- getRValueInReg i
       appendCode [XSM_MUL_I rhs innerSize]
       appendCode [XSM_ADD reg rhs]
@@ -320,6 +429,35 @@ getRValueInReg rValue = case rValue of
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
+  RFuncCall fname args -> do
+    usedRegs <- gets usedRegs
+    mapM_ (\reg -> appendCode [XSM_PUSH reg]) usedRegs
+    label <- getFuncLabel fname
+    mapM_
+      (\arg -> do
+        r1 <- getRValueInReg arg
+        appendCode [XSM_PUSH r1]
+        releaseReg r1
+      )
+
+      args
+    appendCode [XSM_PUSH R0] -- Space for return value
+    appendCode [XSM_UTJ $ XSM_UTJ_CALL label]
+    r1 <- getFreeReg
+    appendCode [XSM_POP r1]
+    t <- getFreeReg
+    mapM_
+      (\_ -> do
+        appendCode [XSM_POP t]
+      )
+      args
+    releaseReg t
+    mapM_ (\reg -> appendCode [XSM_POP reg]) usedRegs
+    return r1
+
+getFuncLabel :: String -> Codegen String
+getFuncLabel name = gets
+  (funcLabel . fromJust . find (\s -> funcName s == name) . funcs)
 
 type ALUInstr = (Reg -> Reg -> XSMInstr)
 
@@ -354,26 +492,45 @@ logicOpInstr op = case op of
 
 getSymbol :: String -> Codegen Symbol
 getSymbol name = do
-  gSymbols <- gets gSymbols
-  return $ fromJust $ find (\sym -> symName sym == name) gSymbols
+  lSymbol <- gets
+    (\s -> join $ find (\s -> (symName s) == name) <$> (lSymbols s))
+  gSymbol <- gets
+    (\s -> find (\s -> (symName s) == name) $ (gSymbols s))
+  case (lSymbol, gSymbol) of
+    (Just symbol, _          ) -> return symbol
+    (Nothing    , Just symbol) -> return symbol
+    (Nothing    , Nothing    ) -> error $ "Symbol not found:" ++ name
 
 getSymbolDataType :: String -> Codegen DataType
 getSymbolDataType name = symDataType <$> getSymbol name
 
-getSymbolLocInStack :: MonadState CodegenState f => String -> f Int
-getSymbolLocInStack identName = (4096 +) <$> gets
-  ( symRelLoc
-  . fromJust
-  . find (\s -> symName s == identName)
-  . gSymbols
-  )
+getSymbolLocInReg :: String -> Codegen Reg
+getSymbolLocInReg name = do
+  lSymbol <- gets
+    (\s -> join $ find (\s -> (symName s) == name) <$> (lSymbols s))
+  gSymbol <- gets
+    (\s -> find (\s -> (symName s) == name) $ (gSymbols s))
+  case (lSymbol, gSymbol) of
+    (Just symbol, _) -> do
+      r <- getFreeReg
+      appendCode [XSM_MOV_R r BP]
+      appendCode [XSM_ADD_I r (symRelLoc symbol)]
+      return r
+    (Nothing, Just symbol) -> do
+      r <- getFreeReg
+      appendCode [XSM_MOV_Int r (4096 + (symRelLoc symbol))]
+      return r
+    (Nothing, Nothing) -> error $ "Symbol not found:" ++ name
 
 getFreeReg :: StateT CodegenState (Either Error) Reg
 getFreeReg = do
   compiler <- get
   case freeRegs compiler of
     (r : rs) -> do
-      put $ compiler { freeRegs = rs }
+      put $ compiler
+        { freeRegs = rs
+        , usedRegs = r : usedRegs compiler
+        }
       return r
     [] ->
       throwError $ Error.compilerError "out of registers" (Span 0 0)
@@ -381,8 +538,10 @@ getFreeReg = do
 releaseReg :: Reg -> Codegen ()
 releaseReg reg = do
   compiler <- get
-  put compiler { freeRegs = pushFreeReg (freeRegs compiler) reg }
-  where pushFreeReg regs r = r : regs
+  put compiler
+    { freeRegs = reg : (freeRegs compiler)
+    , usedRegs = filter ((/=) reg) (usedRegs compiler)
+    }
 
 appendCode :: [XSMInstr] -> Codegen ()
 appendCode getInstrs' = do

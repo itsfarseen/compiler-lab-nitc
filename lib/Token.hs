@@ -41,6 +41,7 @@ data Token
   | TokenDo Span
   | TokenBreak Span
   | TokenContinue Span
+  | TokenReturn Span
   | TokenInt Span
   | TokenBool Span
   | TokenString Span
@@ -91,6 +92,7 @@ instance HasSpan Token where
     TokenDo             span           -> span
     TokenBreak          span           -> span
     TokenContinue       span           -> span
+    TokenReturn         span           -> span
     TokenInt            span           -> span
     TokenBool           span           -> span
     TokenString         span           -> span

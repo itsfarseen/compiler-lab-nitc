@@ -11,14 +11,17 @@ import Data.Word
 import Data.List
 import Error (Error)
 import Grammar
+import Data.Maybe (isJust, fromJust)
+import Data.Bifunctor (second)
 
 data AlexInput = AlexInput {alexInputStr :: [Word8], alexTokenOffset :: Int }
 
 data FrontendData =
   FrontendData
     { alexInput :: AlexInput
-    , symbols :: [Symbol]
+    , gSymbols :: [Symbol]
     , funcs :: [Func]
+    , funcContext :: Maybe (FuncDecl, [Symbol])
     , loopStack :: Int
     }
 
@@ -40,15 +43,16 @@ initData sourceCode =
                             , alexTokenOffset = 0
                             }
   in  FrontendData { alexInput
-                   , symbols   = []
+                   , gSymbols   = []
                    , funcs     = []
+                   , funcContext = Nothing
                    , loopStack = 0
                    }
 
 runFrontend :: FrontendData -> Frontend a -> Either Error a
 runFrontend initData (Frontend state) = runExcept $ evalStateT state initData
 
--- Instances
+-- Utilities
 
 insertList :: Eq k => (a -> k) -> a -> [a] -> [a]
 insertList key a list = case list of
@@ -56,13 +60,14 @@ insertList key a list = case list of
   (a' : as') ->
     (if key a == key a' then a : as' else a' : insertList key a as')
 
+-- Instances
 
 instance ReadSymbols Frontend where
-  symLookup name = gets $ (find $ \s -> symName s == name) . symbols
+  symLookup name = gets $ (find $ \s -> symName s == name) . gSymbols
 
 instance WriteSymbols Frontend where
   symInsert symbol = modify $ \frontendData -> frontendData
-    { symbols = insertList symName symbol (symbols frontendData)
+    { gSymbols = insertList symName symbol (gSymbols frontendData)
     }
 
 instance ReadFuncs Frontend where
@@ -81,5 +86,17 @@ instance LoopStackWriter Frontend where
   pushLoop = modify (\x -> x{loopStack = loopStack x + 1})
   popLoop = modify (\x -> x{loopStack = max 0 (loopStack x - 1)})
 
-instance SymbolTableStack Frontend where
-  -- TODO
+
+instance FunctionContext Frontend where
+  fcEnter funcDecl = modify $ \s ->
+    s{funcContext = Just (funcDecl, [])}
+  fcExit = do
+    (_, syms) <- gets (fromJust . funcContext)
+    modify $ \s -> s{funcContext = Nothing}
+    return syms
+  fcGet = gets (fst. fromJust . funcContext)
+  fcSymLookup name = gets $ (find $ \s -> symName s == name) . snd . fromJust .funcContext
+  fcSymInsert symbol = modify $ \frontendData -> frontendData
+    { funcContext = fmap (second $ insertList symName symbol) (funcContext frontendData) }
+  fcHasCtxt = gets (isJust . funcContext)
+

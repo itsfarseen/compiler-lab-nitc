@@ -69,6 +69,7 @@ import Data.Tuple.Extra
     do       {TokenDo        _ }
     break    {TokenBreak     _ }
     continue {TokenContinue  _ }
+    return   {TokenReturn    _ }
     int      {TokenInt       _ }
     bool     {TokenBool      _ }
     string   {TokenString    _ }
@@ -79,10 +80,21 @@ import Data.Tuple.Extra
 
 %%
 
-Program :: {Program}
+Program :: {()}
 Program:
-      begin Slist end   { Program {stmts=$2} }
-    | begin end         { Program {stmts=[]} }
+      TSlist            {()}
+
+TopLevelStmt :: {()}
+TopLevelStmt:
+      DoVarDeclare      {()}
+    | DoFuncDeclare     {()}
+    | DoFuncDefine      {()}
+
+TSlist :: {()}
+TSlist:
+      TopLevelStmt      {()}
+    | TSlist TopLevelStmt
+                        {()}
 
 Slist :: {[Stmt]}
 Slist:
@@ -100,9 +112,8 @@ Stmt:
     | StmtWhile         { [StmtWhile $1] }
     | StmtBreak         { [StmtBreak $1] }
     | StmtContinue      { [StmtContinue $1] }
-    | DoFuncDeclare
-                        { [] }
-    | DoFuncDefine      { [] }
+    | StmtReturn        { [StmtReturn $1] }
+    | StmtRValue        { [StmtRValue $1]}
 
 DoVarDeclare :: {()}
 DoVarDeclare:
@@ -172,6 +183,14 @@ StmtBreak:
 StmtContinue :: {StmtContinue}
 StmtContinue:
       continue ';'      {% mkStmtContinue (getSpan $1)}
+
+StmtRValue :: {StmtRValue}
+StmtRValue:
+      RValue ';'      {% mkStmtRValue (spanWVal $1) }
+
+StmtReturn :: {StmtReturn}
+StmtReturn:
+      return RValue ';'      {% mkStmtReturn (spanWVal $2) (getSpan $2) }
 
 FunctionArg :: {SpanW (String, PrimitiveType)}
 FunctionArg:

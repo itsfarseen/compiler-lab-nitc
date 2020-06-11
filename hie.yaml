@@ -1,8 +1,9 @@
 cradle:
   multi:
-    - path: "./lib"
-      config: { cradle: { stack: { component: "CompilerLab:lib" } } }
     - path: "./src"
+      config:
+        { cradle: { stack: { component: "CompilerLab:exe:CompilerLab" } } }
+    - path: "./lib"
       config:
         { cradle: { stack: { component: "CompilerLab:exe:CompilerLab" } } }
     - path: "./tests"

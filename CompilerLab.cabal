@@ -25,8 +25,8 @@ executable CompilerLab
     Main.hs
 
   hs-source-dirs:
-    lib
     src
+    lib
 
   other-modules:
     Backend.Codegen

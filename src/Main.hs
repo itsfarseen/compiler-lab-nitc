@@ -21,15 +21,17 @@ prompt text = do
   hFlush stdout
   getLine
 
-frontend :: Frontend (Grammar.Program, [Grammar.Symbol])
+frontend :: Frontend ([Grammar.Func], [Grammar.Symbol])
 frontend = do
-  program <- Parser.parse
-  symbols <- gets Frontend.symbols
-  return (program, symbols)
+  Parser.parse
+  symbols <- gets Frontend.gSymbols
+  funcs <- gets Frontend.funcs
+  return (funcs, symbols)
 
-backend mode program = do
+backend mode = do
   execSetupGlobalSymtab
-  execProgram program
+  execCallMainFunc
+  execFuncDefs
   code <- case mode of
     CodeOutputTranslated -> do
       code <- getCodeTranslated
@@ -65,17 +67,17 @@ main = do
       exitFailure
   input <- readFile inputFile
   handleError input inputFile $ do
-    (program, symbols) <- liftEither
+    (funcs, symbols) <- liftEither
       $ Frontend.runFrontend (Frontend.initData input) frontend
-    output <- liftEither $ Codegen.runCodegen (backend codeOutputMode program) symbols
+    output <- liftEither $ Codegen.runCodegen (backend codeOutputMode) symbols funcs
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()
   handleError input inputFile ex = do
     run <- runExceptT ex
     case run of
-      Left error ->
-        mapM_ (\(str, span) -> printError str span input inputFile) error
+      Left e ->
+        mapM_ (\(str, span) -> printError str span input inputFile) e
       Right _ -> return ()
 
 printError :: String -> Span -> String -> String -> IO ()

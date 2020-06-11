@@ -8,15 +8,19 @@ import Data.List (find)
 import Error
 import Grammar
 import Test.Utils
+import Data.Maybe (fromJust, isJust)
+import Data.Bifunctor (second)
 
-data GrammarState = GrammarState
-  { gsSymbols :: [[Symbol]],
-    gsFuncs :: [Func],
-    gsLoopStack :: Int
-  }
+data GrammarState =
+  GrammarState
+    { gsSymbols :: [[Symbol]]
+    , gsFuncs :: [Func]
+    , gsLoopStack :: Int
+    , funcContext :: Maybe (FuncDecl, [Symbol])
+    }
 
 initGrammarState :: GrammarState
-initGrammarState = GrammarState [[]] [] 0
+initGrammarState = GrammarState [[]] [] 0 Nothing
 
 newtype GrammarM a
   = GrammarM (StateT GrammarState (Either Error) a)
@@ -29,29 +33,31 @@ newtype GrammarM a
     )
 
 instance ReadSymbols GrammarM where
-  symLookup name = gets
-    (find (\x -> symName x == name) . concat . gsSymbols)
+  symLookup name =
+    gets (find (\x -> symName x == name) . concat . gsSymbols)
 
 instance WriteSymbols GrammarM where
   symInsert sym = modify
     (\state ->
-      let (symtab : ss) = gsSymbols state
-          symtab'       = symtab ++ [sym]
-          gsSymbols'    = (symtab' : ss)
-      in  state { gsSymbols = gsSymbols' }
+      let
+        (symtab : ss) = gsSymbols state
+        symtab'       = symtab ++ [sym]
+        gsSymbols'    = (symtab' : ss)
+      in state { gsSymbols = gsSymbols' }
         -- Note: multiple insert will cause duplicates
     )
 
 instance ReadFuncs GrammarM where
-  funcLookup name = gets
-    (find (\x -> (funcName . funcDecl) x == name) . gsFuncs)
+  funcLookup name =
+    gets (find (\x -> (funcName . funcDecl) x == name) . gsFuncs)
 
 instance WriteFuncs GrammarM where
   funcInsert func = modify
     (\state -> state
-      { gsFuncs = insertList (funcName . funcDecl)
-                             func
-                             (gsFuncs state)
+      { gsFuncs = insertList
+        (funcName . funcDecl)
+        func
+        (gsFuncs state)
       }
     )
 
@@ -59,22 +65,22 @@ instance ReadLoopStack GrammarM where
   hasLoop = gets (\x -> gsLoopStack x > 0)
 
 instance LoopStackWriter GrammarM where
-  pushLoop =
-    modify (\x -> x { gsLoopStack = gsLoopStack x + 1 })
+  pushLoop = modify (\x -> x { gsLoopStack = gsLoopStack x + 1 })
   popLoop =
-    modify
-      (\x -> x { gsLoopStack = max 0 (gsLoopStack x - 1) })
+    modify (\x -> x { gsLoopStack = max 0 (gsLoopStack x - 1) })
 
-instance SymbolTableStack GrammarM where
-  symStackPush =
-    modify (\x -> x { gsSymbols = [] : (gsSymbols x) })
-  symStackPop = do
-    (symtab, ss) <- gets gsSymbols >>= \case
-      [] -> error "gsSymbols can't be empty"
-      [_] -> error "can't pop symStack, only one symtab"
-      (symtab : ss) -> return (symtab, ss)
-    modify (\x -> x { gsSymbols = ss })
-    return symtab
+instance FunctionContext GrammarM where
+  fcEnter funcDecl = modify $ \s ->
+    s{funcContext = Just (funcDecl, [])}
+  fcExit = do
+    (_, syms) <- gets (fromJust . funcContext)
+    modify $ \s -> s{funcContext = Nothing}
+    return syms
+  fcGet = gets (fst. fromJust . funcContext)
+  fcSymLookup name = gets $ (find $ \s -> symName s == name) . snd . fromJust .funcContext
+  fcSymInsert symbol = modify $ \frontendData -> frontendData
+    { funcContext = fmap (second $ insertList symName symbol) (funcContext frontendData) }
+  fcHasCtxt = gets (isJust . funcContext)
 
 runGrammarM
   :: GrammarState -> GrammarM a -> Either Error (a, GrammarState)

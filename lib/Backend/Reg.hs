@@ -23,4 +23,4 @@ data Reg
   | R19
   | SP
   | BP
-  deriving (Enum, Show)
+  deriving (Enum, Eq, Show)
