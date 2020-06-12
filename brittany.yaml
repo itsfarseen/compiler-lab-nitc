@@ -25,7 +25,7 @@ conf_obfuscate: false
 conf_roundtrip_exactprint_only: false
 conf_version: 1
 conf_layout:
-  lconfig_reformatModulePreamble: false
+  lconfig_reformatModulePreamble: true
   lconfig_altChooser:
     tag: AltChooserBoundedSearch
     contents: 3

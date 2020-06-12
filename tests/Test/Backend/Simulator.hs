@@ -1,38 +1,46 @@
 module Test.Backend.Simulator where
 
 import Flow
+import Test.Tasty
 import Test.Tasty.HUnit
+
 
 import qualified Backend.Simulator as Simulator
 import Backend.Instructions
 import Backend.Reg
 
+tests :: TestTree
+tests = testGroup
+  "Simulator"
+  [testCase "Simulator" unit_simulator, testCase "Loop" unit_simulator_loop]
+
 unit_simulator :: Assertion
 unit_simulator =
-  let machine =
-          Simulator.init code
-            |> Simulator.setMemory 4096 "123"
-            |> Simulator.setMemory 4097 "4098"
-            |> Simulator.setMemory 4098 "234"
-            |> Simulator.run
-      code =
-          [ XSM_MOV_Int SP 4095
-          , XSM_ADD_I SP 3
-          , XSM_MOV_Int R1 345
-          , XSM_PUSH R1          -- setMemory 4099 345
-          , XSM_MOV_DirSrc R1 4096
-          , XSM_MOV_DirSrc R2 4097
-          , XSM_MOV_IndSrc R2 R2
-          , XSM_POP R3
-          ]
-  in  do
-        Simulator.getRegVal SP machine @?= "4098"
-        Simulator.getMemory 4096 machine @?= "123"
-        Simulator.getMemory 4097 machine @?= "4098"
-        Simulator.getMemory 4098 machine @?= "234"
-        Simulator.getRegVal R1 machine @?= "123"
-        Simulator.getRegVal R2 machine @?= "234"
-        Simulator.getRegVal R3 machine @?= "345"
+  let
+    machine =
+      Simulator.init code
+        |> Simulator.setMemory 4096 "123"
+        |> Simulator.setMemory 4097 "4098"
+        |> Simulator.setMemory 4098 "234"
+        |> Simulator.run
+    code =
+      [ XSM_MOV_Int SP 4095
+      , XSM_ADD_I SP 3
+      , XSM_MOV_Int R1 345
+      , XSM_PUSH R1          -- setMemory 4099 345
+      , XSM_MOV_DirSrc R1 4096
+      , XSM_MOV_DirSrc R2 4097
+      , XSM_MOV_IndSrc R2 R2
+      , XSM_POP R3
+      ]
+  in do
+    Simulator.getRegVal SP machine @?= "4098"
+    Simulator.getMemory 4096 machine @?= "123"
+    Simulator.getMemory 4097 machine @?= "4098"
+    Simulator.getMemory 4098 machine @?= "234"
+    Simulator.getRegVal R1 machine @?= "123"
+    Simulator.getRegVal R2 machine @?= "234"
+    Simulator.getRegVal R3 machine @?= "345"
 
 -- brittany-disable-next-binding
 unit_simulator_loop :: Assertion

@@ -1,5 +1,17 @@
-{-# OPTIONS_GHC -F -pgmF tasty-discover #-}
+import Test.Backend.Codegen
+import Test.Backend.Simulator
+import Test.Grammar
+import Test.Tasty
+import qualified Test.Golden
 
--- import Test.Backend.Codegen
--- import Test.Tasty
--- main = defaultMain test_execStmtIf
+main :: IO ()
+main = do
+  goldenTests <- Test.Golden.main
+  defaultMain
+    $ testGroup "Main"
+    $ [ Test.Backend.Codegen.tests
+      , Test.Backend.Simulator.tests
+      , Test.Grammar.tests
+      , goldenTests
+      ]
+
