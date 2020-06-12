@@ -20,7 +20,9 @@ import Span
 import Control.Monad.Except
 import Data.List (find)
 import Data.Maybe (fromJust)
+
 -- import Debug.Trace
+-- dbgs s v = trace (s ++ ": " ++ show v) v
 
 type Codegen = StateT CodegenState (Either Error)
 

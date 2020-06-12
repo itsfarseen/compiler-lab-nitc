@@ -89,6 +89,7 @@ TopLevelStmt:
       DoVarDeclare      {()}
     | DoFuncDeclare     {()}
     | DoFuncDefine      {()}
+    | TopLevelStmt ';'   {$1}
 
 TSlist :: {()}
 TSlist:
@@ -114,6 +115,7 @@ Stmt:
     | StmtContinue      { [StmtContinue $1] }
     | StmtReturn        { [StmtReturn $1] }
     | StmtRValue        { [StmtRValue $1]}
+    | Stmt ';'          {$1}
 
 DoVarDeclare :: {()}
 DoVarDeclare:
@@ -245,6 +247,14 @@ RValue :: {SpanW RValue}
 RValue:
       LValue            { fmap RLValue $1 }
     | Exp               { fmap RExp $1 }
+    | ident '(' ')'     {% mkExpFuncCall (spanWVal $1) [] (getSpanBwn $1 $3) >>= (\s -> return $ SpanW s (getSpanBwn $1 $3)) }
+    | ident '(' RValues ')'
+                        {% mkExpFuncCall (spanWVal $1) $3 (getSpanBwn $1 $4) >>= (\s -> return $ SpanW s (getSpanBwn $1 $4)) }
+
+RValues :: {[SpanW RValue]}
+RValues:
+      RValue                {[$1]}
+    | RValue ',' RValues    {$1:$3}
 
 Exp :: {SpanW Exp}
 Exp:

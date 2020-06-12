@@ -59,8 +59,8 @@ $sq_bracket_close = \]
 
 @number      = [0-9]+
 @strlit      = \"[^\"]*\"
-@ident       = [a-z_][a-z0-9_]*
-@skip        ="decl|enddecl|begin|end|type|endtype"
+@ident       = [a-zA-Z_][a-zA-Z0-9_]*
+@skip        = decl|enddecl|begin|end|type|endtype
 
 tokens :-
     $white+      ;

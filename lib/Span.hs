@@ -1,5 +1,7 @@
 module Span where
 
+import Debug.Trace
+
 data Span =
   Span
     { spanStart :: Int
@@ -44,8 +46,8 @@ data FullSpan =
 getFullSpan :: Span -> String -> FullSpan
 getFullSpan span sourceCode =
   let linesBefore =
-          lines $ take (spanStart span) sourceCode
-      lenLastLine = length (last linesBefore)
+          lines $ take (spanStart (traceShow span span)) sourceCode
+      lenLastLine = length (last ("":linesBefore))
       lineNo      = length linesBefore
       colNo       = lenLastLine + 1
       lineStart   = spanStart span - colNo + 1

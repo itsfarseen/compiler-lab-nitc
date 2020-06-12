@@ -9,11 +9,10 @@ import System.IO
 
 import Backend.Codegen as Codegen
 import Backend.Instructions
-import Error (Error)
+import Error (Error, printError)
 import Frontend
 import qualified Grammar
 import Parser
-import Span
 
 prompt :: String -> IO String
 prompt text = do
@@ -80,24 +79,3 @@ main = do
         mapM_ (\(str, span) -> printError str span input inputFile) e
       Right _ -> return ()
 
-printError :: String -> Span -> String -> String -> IO ()
-printError errorName errorSpan input inputFile = do
-  let errorFullSpan              = getFullSpan errorSpan input
-  let (errorLine, squigglesLine) = getErrorLineAndSquiggles errorFullSpan
-  putStrLn
-    $  inputFile
-    ++ ":"
-    ++ show (fspanLineNo errorFullSpan)
-    ++ ":"
-    ++ show (fspanColNo errorFullSpan)
-    ++ " - "
-    ++ errorName
-  putStrLn errorLine
-  putStrLn squigglesLine
-
-getErrorLineAndSquiggles :: FullSpan -> (String, String)
-getErrorLineAndSquiggles errorFullSpan =
-  let errorLine     = fspanLine errorFullSpan
-      squigglesLine = replicate (fspanColNo errorFullSpan - 1) ' '
-        ++ replicate (fspanLength errorFullSpan) '^'
-  in  (errorLine, squigglesLine)

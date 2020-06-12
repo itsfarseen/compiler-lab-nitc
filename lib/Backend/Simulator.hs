@@ -99,12 +99,13 @@ setMemory !loc !val machine =
   machine { memory = HM.insert loc (toXSMStr val) (memory machine) }
 
 execute :: XSMInstr -> Machine -> (Machine, Bool)
-execute instr !machine =
+execute !instr !machine =
   case instr of
     XSM_INT 10 -> (machine, True)
     _ ->
       (, False) $
         case instr of
+          XSM_NOP -> machine
           XSM_MOV_R r1 r2 ->
             let r2Val = getRegVal r2 machine in setRegVal r1 r2Val machine
           XSM_MOV_Int r1 val -> setRegVal r1 val machine
