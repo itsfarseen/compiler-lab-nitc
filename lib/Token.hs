@@ -16,6 +16,9 @@ data Token
   | TokenGT Span
   | TokenLE Span
   | TokenGE Span
+  -- Logical
+  | TokenLAnd Span
+  | TokenLOr Span
   -- Assignment
   | TokenEquals Span
   -- Punctuation
@@ -67,6 +70,9 @@ instance HasSpan Token where
     TokenGT             span           -> span
     TokenLE             span           -> span
     TokenGE             span           -> span
+    -- Logical
+    TokenLAnd           span           -> span
+    TokenLOr            span           -> span
     -- Assignment
     TokenEquals         span           -> span
     -- Punctuation

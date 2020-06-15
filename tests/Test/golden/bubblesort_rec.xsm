@@ -1,0 +1,229 @@
+0
+2056
+0
+0
+0
+0
+0
+0
+"":	XSM_MOV_Int SP 4096
+"":	XSM_ADD_I SP 16
+"":	XSM_UTJ (XSM_UTJ_CALL "main")
+"":	XSM_INT 10
+"BubbleSort":	XSM_PUSH BP
+"":	XSM_MOV_R BP SP
+"":	XSM_ADD_I SP 0
+"":	XSM_MOV_Int R0 4110
+"":	XSM_MOV_IndSrc R0 R0
+"":	XSM_MOV_Int R1 4111
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_LT R0 R1
+"":	XSM_MOV_Int R1 4111
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_MOV_Int R2 0
+"":	XSM_GT R1 R2
+"":	XSM_MUL R0 R1
+"":	XSM_UTJ (XSM_UTJ_JZ R0 "L1")
+"":	XSM_MOV_Int R1 4097
+"":	XSM_MOV_Int R2 4110
+"":	XSM_MOV_IndSrc R2 R2
+"":	XSM_MUL_I R2 1
+"":	XSM_ADD R1 R2
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_MOV_Int R2 4097
+"":	XSM_MOV_Int R3 4110
+"":	XSM_MOV_IndSrc R3 R3
+"":	XSM_MOV_Int R4 1
+"":	XSM_ADD R3 R4
+"":	XSM_MUL_I R3 1
+"":	XSM_ADD R2 R3
+"":	XSM_MOV_IndSrc R2 R2
+"":	XSM_GT R1 R2
+"":	XSM_UTJ (XSM_UTJ_JZ R1 "L2")
+"":	XSM_MOV_Int R2 4097
+"":	XSM_MOV_Int R3 4110
+"":	XSM_MOV_IndSrc R3 R3
+"":	XSM_MUL_I R3 1
+"":	XSM_ADD R2 R3
+"":	XSM_MOV_IndSrc R2 R2
+"":	XSM_MOV_R R3 BP
+"":	XSM_ADD_I R3 (-4)
+"":	XSM_MOV_IndDst R3 R2
+"":	XSM_MOV_Int R2 4097
+"":	XSM_MOV_Int R3 4110
+"":	XSM_MOV_IndSrc R3 R3
+"":	XSM_MOV_Int R4 1
+"":	XSM_ADD R3 R4
+"":	XSM_MUL_I R3 1
+"":	XSM_ADD R2 R3
+"":	XSM_MOV_IndSrc R2 R2
+"":	XSM_MOV_Int R3 4097
+"":	XSM_MOV_Int R4 4110
+"":	XSM_MOV_IndSrc R4 R4
+"":	XSM_MUL_I R4 1
+"":	XSM_ADD R3 R4
+"":	XSM_MOV_IndDst R3 R2
+"":	XSM_MOV_R R2 BP
+"":	XSM_ADD_I R2 (-4)
+"":	XSM_MOV_IndSrc R2 R2
+"":	XSM_MOV_Int R3 4097
+"":	XSM_MOV_Int R4 4110
+"":	XSM_MOV_IndSrc R4 R4
+"":	XSM_MOV_Int R5 1
+"":	XSM_ADD R4 R5
+"":	XSM_MUL_I R4 1
+"":	XSM_ADD R3 R4
+"":	XSM_MOV_IndDst R3 R2
+"L2":	XSM_PUSH R0
+"":	XSM_MOV_Int R1 4110
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_MOV_Int R2 1
+"":	XSM_ADD R1 R2
+"":	XSM_PUSH R1
+"":	XSM_MOV_Int R1 4111
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_PUSH R1
+"":	XSM_PUSH R0
+"":	XSM_UTJ (XSM_UTJ_CALL "BubbleSort")
+"":	XSM_POP R1
+"":	XSM_POP R2
+"":	XSM_POP R2
+"":	XSM_MOV_Int R2 4109
+"":	XSM_MOV_IndDst R2 R1
+"":	XSM_PUSH R0
+"":	XSM_MOV_Int R1 4110
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_PUSH R1
+"":	XSM_MOV_Int R1 4111
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_MOV_Int R2 1
+"":	XSM_SUB R1 R2
+"":	XSM_PUSH R1
+"":	XSM_PUSH R0
+"":	XSM_UTJ (XSM_UTJ_CALL "BubbleSort")
+"":	XSM_POP R1
+"":	XSM_POP R2
+"":	XSM_POP R2
+"":	XSM_MOV_Int R2 4109
+"":	XSM_MOV_IndDst R2 R1
+"L1":	XSM_MOV_Int R0 0
+"":	XSM_MOV_R R1 BP
+"":	XSM_SUB_I R1 2
+"":	XSM_MOV_IndDst R1 R0
+"":	XSM_MOV_R SP BP
+"":	XSM_POP BP
+"":	XSM_RET
+"":	XSM_MOV_R SP BP
+"":	XSM_POP BP
+"":	XSM_RET
+"main":	XSM_PUSH BP
+"":	XSM_MOV_R BP SP
+"":	XSM_ADD_I SP 1
+"":	XSM_MOV_Int R0 4096
+"":	XSM_MOV_Int R1 7
+"":	XSM_PUSH R1
+"":	XSM_MOV_Int R1 (-1)
+"":	XSM_PUSH R1
+"":	XSM_PUSH R0
+"":	XSM_PUSH R0
+"":	XSM_PUSH R0
+"":	XSM_INT 6
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_MOV_Int R0 0
+"":	XSM_MOV_Int R1 4107
+"":	XSM_MOV_IndDst R1 R0
+"L3":	XSM_MOV_Int R0 4107
+"":	XSM_MOV_IndSrc R0 R0
+"":	XSM_MOV_Int R1 4096
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_LT R0 R1
+"":	XSM_UTJ (XSM_UTJ_JZ R0 "L4")
+"":	XSM_MOV_Int R0 4097
+"":	XSM_MOV_Int R1 4107
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_MUL_I R1 1
+"":	XSM_ADD R0 R1
+"":	XSM_MOV_Int R1 7
+"":	XSM_PUSH R1
+"":	XSM_MOV_Int R1 (-1)
+"":	XSM_PUSH R1
+"":	XSM_PUSH R0
+"":	XSM_PUSH R0
+"":	XSM_PUSH R0
+"":	XSM_INT 6
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_MOV_Int R0 4107
+"":	XSM_MOV_IndSrc R0 R0
+"":	XSM_MOV_Int R1 1
+"":	XSM_ADD R0 R1
+"":	XSM_MOV_Int R1 4107
+"":	XSM_MOV_IndDst R1 R0
+"":	XSM_UTJ (XSM_UTJ_JMP "L3")
+"L4":	XSM_MOV_Int R0 0
+"":	XSM_PUSH R0
+"":	XSM_MOV_Int R0 4096
+"":	XSM_MOV_IndSrc R0 R0
+"":	XSM_MOV_Int R1 1
+"":	XSM_SUB R0 R1
+"":	XSM_PUSH R0
+"":	XSM_PUSH R0
+"":	XSM_UTJ (XSM_UTJ_CALL "BubbleSort")
+"":	XSM_POP R0
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_MOV_R R1 BP
+"":	XSM_ADD_I R1 1
+"":	XSM_MOV_IndDst R1 R0
+"":	XSM_MOV_Int R0 0
+"":	XSM_MOV_Int R1 4107
+"":	XSM_MOV_IndDst R1 R0
+"L5":	XSM_MOV_Int R0 4107
+"":	XSM_MOV_IndSrc R0 R0
+"":	XSM_MOV_Int R1 4096
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_LT R0 R1
+"":	XSM_UTJ (XSM_UTJ_JZ R0 "L6")
+"":	XSM_MOV_Int R0 4097
+"":	XSM_MOV_Int R1 4107
+"":	XSM_MOV_IndSrc R1 R1
+"":	XSM_MUL_I R1 1
+"":	XSM_ADD R0 R1
+"":	XSM_MOV_IndSrc R0 R0
+"":	XSM_MOV_Int R1 5
+"":	XSM_PUSH R1
+"":	XSM_MOV_Int R1 (-2)
+"":	XSM_PUSH R1
+"":	XSM_PUSH R0
+"":	XSM_PUSH R0
+"":	XSM_PUSH R0
+"":	XSM_INT 7
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_POP R1
+"":	XSM_MOV_Int R0 4107
+"":	XSM_MOV_IndSrc R0 R0
+"":	XSM_MOV_Int R1 1
+"":	XSM_ADD R0 R1
+"":	XSM_MOV_Int R1 4107
+"":	XSM_MOV_IndDst R1 R0
+"":	XSM_UTJ (XSM_UTJ_JMP "L5")
+"L6":	XSM_MOV_Int R0 0
+"":	XSM_MOV_R R1 BP
+"":	XSM_SUB_I R1 2
+"":	XSM_MOV_IndDst R1 R0
+"":	XSM_MOV_R SP BP
+"":	XSM_POP BP
+"":	XSM_RET
+"":	XSM_MOV_R SP BP
+"":	XSM_POP BP
+"":	XSM_RET

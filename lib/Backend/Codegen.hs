@@ -21,15 +21,16 @@ import Control.Monad.Except
 import Data.List (find)
 import Data.Maybe (fromJust)
 
--- import Debug.Trace
--- dbgs s v = trace (s ++ ": " ++ show v) v
+
+import Debug.Trace
+dbgs s v = trace (s ++ ": " ++ show v) v
 
 type Codegen = StateT CodegenState (Either Error)
 
 data CodegenState =
   CodegenState
-    { freeRegs :: [Reg]
-    , usedRegs :: [Reg]
+    { freeRegs :: [[Reg]]
+    , usedRegs :: [[Reg]]
     , code :: [XSMInstr]
     , labels :: HM.HashMap String Int
     , lastLabelNo :: Int
@@ -47,6 +48,7 @@ data Symbol =
     , symDataType :: G.DataType
     , symRelLoc :: Int
     }
+    deriving (Show, Eq)
 
 data Func = Func {
     funcName :: String
@@ -58,8 +60,7 @@ data Func = Func {
 }
 
 runCodegen :: Codegen a -> CodegenState -> Either Error a
-runCodegen compiler state =
-  evalStateT compiler state
+runCodegen compiler state = evalStateT compiler state
 
 
 initCodegenState :: [G.Symbol] -> [G.Func] -> CodegenState
@@ -73,8 +74,8 @@ initCodegenState symbols funcs = initCodegenStateInternal
 
 initCodegenStateInternal :: [Symbol] -> Int -> [Func] -> CodegenState
 initCodegenStateInternal gSymbols gSymbolsSize funcs = CodegenState
-  { freeRegs           = [R0 .. R19]
-  , usedRegs           = []
+  { freeRegs           = [[R0 .. R19]]
+  , usedRegs           = [[]]
   , code               = []
   , labels             = HM.empty
   , lastLabelNo        = 0
@@ -113,8 +114,8 @@ buildFuncsTable funcs i = case funcs of
       error $ "Function declared, but not defined: " ++ funcName
     G.FuncDefined G.FuncDecl { funcName, funcRetType } G.FuncDef { funcBody, funcArgsLen, funcSyms }
       -> let
-           (args, localVars)     = splitAt (funcArgsLen) funcSyms
-           args'                 = buildFuncArgsTable args (-2)
+           (args, localVars)     = splitAt funcArgsLen funcSyms
+           args'                 = buildFuncArgsTable args (-3)
            (localVars', locNext) = buildSymbolTable localVars 1
          in Func
            { funcName
@@ -122,7 +123,7 @@ buildFuncsTable funcs i = case funcs of
            , funcBody
            , funcSymbols       = args' ++ localVars'
            , funcLocalVarsSize = locNext - 1
-           , funcLabel         = "F" ++ (show i)
+           , funcLabel         = funcName
            }
 
 buildFuncArgsTable :: [G.Symbol] -> Int -> [Symbol]
@@ -131,7 +132,7 @@ buildFuncArgsTable symbols locBase =
     sentinel = Symbol
       { symName     = error "sentinel"
       , symDataType = error "sentinel"
-      , symRelLoc   = locBase
+      , symRelLoc   = locBase + 1
       }
   in init $ scanr f sentinel symbols
  where
@@ -165,8 +166,7 @@ getCodeLabelled = do
   labels <- gets (HM.toList . labels)
   return $ prependLabels code 0 labels
 
-labelTranslate
-  :: Int -> [XSMInstr] -> HM.HashMap String Int -> [XSMInstr]
+labelTranslate :: Int -> [XSMInstr] -> HM.HashMap String Int -> [XSMInstr]
 labelTranslate offset instrs labels = map
   (\instr -> case instr of
     XSM_UTJ jmp ->
@@ -188,7 +188,7 @@ prependLabels code i labels =
     case labelsSorted of
       []                     -> map ("", ) code
       ((label, j) : labels') -> case code of
-        [] -> (label, XSM_NOP) : prependLabels [] (i + 1) labels'
+        []          -> (label, XSM_NOP) : prependLabels [] (i + 1) labels'
         (c : code') -> if i == j
           then
             let c' = (label, c)
@@ -211,8 +211,6 @@ execCallMainFunc = do
     mainFunc = case find (\f -> funcName f == "main") funcs of
       Just f  -> f
       Nothing -> error "main function not defined"
-  -- execFuncDef mainFunc
-  -- mapM_ execFuncDef (filter (\f -> funcName f /= "main") funcs)
   appendCode [XSM_UTJ $ XSM_UTJ_CALL (funcLabel mainFunc)]
   appendCode [XSM_INT 10]
 
@@ -223,6 +221,7 @@ execFuncDefs = do
 
 execFuncDef :: Func -> Codegen ()
 execFuncDef func = do
+  pushRegStack
   installLabel (funcLabel func)
   modify (\s -> s { lSymbols = Just $ funcSymbols func })
   appendCode [XSM_PUSH BP]
@@ -233,6 +232,7 @@ execFuncDef func = do
   appendCode [XSM_POP BP]
   appendCode [XSM_RET]
   modify (\s -> s { lSymbols = Nothing })
+  popRegStack
 
 execStmt :: Stmt -> Codegen ()
 execStmt stmt = case stmt of
@@ -395,13 +395,12 @@ getLValueLocInReg lValue = do
   (reg, _)          <- getLValueLocInReg' dims indices ident
   return reg
  where
-  getLValueLocInReg'
-    :: [Int] -> [RValue] -> String -> Codegen (Reg, Int)
+  getLValueLocInReg' :: [Int] -> [RValue] -> String -> Codegen (Reg, Int)
   getLValueLocInReg' dims indices symName = case (dims, indices) of
     ([], []) -> do
       reg <- getSymbolLocInReg symName
       return (reg, 1)
-    ([]    , _ : _) -> error $ "Codegen bug: Too many indices "
+    ([]    , _ : _) -> error "Codegen bug: Too many indices "
     (d : ds, []   ) -> do
       (reg, innerSize) <- getLValueLocInReg' ds indices symName
       return (reg, innerSize * d)
@@ -413,6 +412,14 @@ getLValueLocInReg lValue = do
       releaseReg rhs
       return (reg, innerSize * d)
 
+backupRegs :: [Reg] -> Codegen ()
+backupRegs regs =
+    mapM_ (\reg -> appendCode [XSM_PUSH reg]) regs
+
+restoreRegs :: [Reg] -> Codegen ()
+restoreRegs regs =
+    mapM_ (\reg -> appendCode [XSM_POP reg]) regs
+
 getRValueInReg :: RValue -> Codegen Reg
 getRValueInReg rValue = case rValue of
   RExp (ExpNum i) -> do
@@ -423,17 +430,17 @@ getRValueInReg rValue = case rValue of
     reg <- getFreeReg
     appendCode [XSM_MOV_Str reg s]
     return reg
-  RExp (MkExpArithmetic e1 op e2) ->
-    execALUInstr (arithOpInstr op) e1 e2
-  RExp (MkExpLogical e1 op e2) ->
-    execALUInstr (logicOpInstr op) e1 e2
-  RLValue lValue -> do
+  RExp (MkExpArithmetic e1 op e2) -> execALUInstr (arithOpInstr op) e1 e2
+  RExp (MkExpRelational e1 op e2) ->
+    execALUInstr (relationalOpInstr op) e1 e2
+  RExp    (MkExpLogical e1 op e2) -> execALUInstr (logicalOpInstr op) e1 e2
+  RLValue lValue                  -> do
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
   RFuncCall fname args -> do
-    usedRegs <- gets usedRegs
-    mapM_ (\reg -> appendCode [XSM_PUSH reg]) usedRegs
+    usedRegs <- getUsedRegs
+    backupRegs usedRegs
     label <- getFuncLabel fname
     mapM_
       (\arg -> do
@@ -441,7 +448,6 @@ getRValueInReg rValue = case rValue of
         appendCode [XSM_PUSH r1]
         releaseReg r1
       )
-
       args
     appendCode [XSM_PUSH R0] -- Space for return value
     appendCode [XSM_UTJ $ XSM_UTJ_CALL label]
@@ -454,12 +460,11 @@ getRValueInReg rValue = case rValue of
       )
       args
     releaseReg t
-    mapM_ (\reg -> appendCode [XSM_POP reg]) usedRegs
     return r1
 
 getFuncLabel :: String -> Codegen String
-getFuncLabel name = gets
-  (funcLabel . fromJust . find (\s -> funcName s == name) . funcs)
+getFuncLabel name =
+  gets (funcLabel . fromJust . find (\s -> funcName s == name) . funcs)
 
 type ALUInstr = (Reg -> Reg -> XSMInstr)
 
@@ -479,8 +484,8 @@ arithOpInstr op = case op of
   OpDiv -> XSM_DIV
   OpMod -> XSM_MOD
 
-logicOpInstr :: OpLogical -> ALUInstr
-logicOpInstr op = case op of
+relationalOpInstr :: OpRelational -> ALUInstr
+relationalOpInstr op = case op of
   OpLT -> XSM_LT
   OpGT -> XSM_GT
   OpLE -> XSM_LE
@@ -490,14 +495,19 @@ logicOpInstr op = case op of
 
 
 
+logicalOpInstr :: OpLogical -> ALUInstr
+logicalOpInstr op = case op of
+  OpLAnd -> XSM_MUL
+  OpLOr  -> XSM_ADD
+
+
 --
 
 getSymbol :: String -> Codegen Symbol
 getSymbol name = do
   lSymbol <- gets
     (\s -> join $ find (\s -> (symName s) == name) <$> (lSymbols s))
-  gSymbol <- gets
-    (\s -> find (\s -> (symName s) == name) $ (gSymbols s))
+  gSymbol <- gets (\s -> find (\s -> (symName s) == name) $ (gSymbols s))
   case (lSymbol, gSymbol) of
     (Just symbol, _          ) -> return symbol
     (Nothing    , Just symbol) -> return symbol
@@ -506,12 +516,24 @@ getSymbol name = do
 getSymbolDataType :: String -> Codegen DataType
 getSymbolDataType name = symDataType <$> getSymbol name
 
+{-
+
+Arg 1
+Arg 2
+Arg 3
+Return Value Space
+RET IP SAVE
+BP SAVE                 <- BP
+   --
+Local Var 1
+Local Var 2
+
+-}
+
 getSymbolLocInReg :: String -> Codegen Reg
 getSymbolLocInReg name = do
-  lSymbol <- gets
-    (\s -> join $ find (\s -> (symName s) == name) <$> (lSymbols s))
-  gSymbol <- gets
-    (\s -> find (\s -> (symName s) == name) $ (gSymbols s))
+  lSymbol <- gets (find (\s -> symName s == name) <=< lSymbols)
+  gSymbol <- gets (find (\s -> symName s == name) . gSymbols)
   case (lSymbol, gSymbol) of
     (Just symbol, _) -> do
       r <- getFreeReg
@@ -520,37 +542,58 @@ getSymbolLocInReg name = do
       return r
     (Nothing, Just symbol) -> do
       r <- getFreeReg
-      appendCode [XSM_MOV_Int r (4096 + (symRelLoc symbol))]
+      appendCode [XSM_MOV_Int r (4096 + symRelLoc symbol)]
       return r
     (Nothing, Nothing) -> error $ "Symbol not found:" ++ name
 
-getFreeReg :: StateT CodegenState (Either Error) Reg
+
+getFreeReg :: Codegen Reg
 getFreeReg = do
   compiler <- get
   case freeRegs compiler of
-    (r : rs) -> do
-      put $ compiler
-        { freeRegs = rs
-        , usedRegs = r : usedRegs compiler
-        }
+    (r : rs) : freeRegsTail -> do
+      let
+        freeRegs'                     = rs : freeRegsTail
+        (usedRegsHead : usedRegsTail) = usedRegs compiler
+        usedRegs'                     = (r : usedRegsHead) : usedRegsTail
+      put $ compiler { freeRegs = freeRegs', usedRegs = usedRegs' }
       return r
-    [] ->
-      throwError $ Error.compilerError "out of registers" (Span 0 0)
+    _ -> throwError $ Error.compilerError "out of registers" (Span 0 0)
 
 releaseReg :: Reg -> Codegen ()
 releaseReg reg = do
   compiler <- get
+  let
+    freeRegsHead : freeRegsTail = freeRegs compiler
+    usedRegsHead : usedRegsTail = usedRegs compiler
+    freeRegs'                   = (reg : freeRegsHead) : freeRegsTail
+    usedRegs' = (filter ((/=) reg) usedRegsHead) : usedRegsTail
   put compiler
-    { freeRegs = reg : (freeRegs compiler)
-    , usedRegs = filter ((/=) reg) (usedRegs compiler)
+    { freeRegs = freeRegs'
+    , usedRegs = usedRegs'
     }
+
+pushRegStack :: Codegen ()
+pushRegStack = modify $ \compiler -> compiler
+  { freeRegs = [R0 .. R19] : freeRegs compiler
+  , usedRegs = [] : usedRegs compiler
+  }
+
+popRegStack :: Codegen ()
+popRegStack = modify $ \compiler -> compiler
+  { freeRegs = tail $ freeRegs compiler
+  , usedRegs = tail $ usedRegs compiler
+  }
+
+getUsedRegs :: Codegen [Reg]
+getUsedRegs = gets (head . usedRegs)
 
 appendCode :: [XSMInstr] -> Codegen ()
 appendCode getInstrs' = do
   compiler <- get
   put compiler { code = code compiler ++ getInstrs' }
 
-getNewLabel :: StateT CodegenState (Either Error) [Char]
+getNewLabel :: Codegen String
 getNewLabel = do
   compiler <- get
   let newLabelNo = lastLabelNo compiler + 1
@@ -561,21 +604,17 @@ installLabel :: String -> Codegen ()
 installLabel label = do
   compiler <- get
   let nextLineNo = length (code compiler)
-  put compiler
-    { labels = HM.insert label nextLineNo (labels compiler)
-    }
+  put compiler { labels = HM.insert label nextLineNo (labels compiler) }
 
 pushLoopBreakLabel :: String -> Codegen ()
 pushLoopBreakLabel label = do
   compiler <- get
-  put compiler
-    { loopBreakLabels = loopBreakLabels compiler ++ [label]
-    }
+  put compiler { loopBreakLabels = loopBreakLabels compiler ++ [label] }
 
-peekLoopBreakLabel :: StateT CodegenState (Either Error) String
+peekLoopBreakLabel :: Codegen String
 peekLoopBreakLabel = gets (last . loopBreakLabels)
 
-popLoopBreakLabel :: StateT CodegenState (Either Error) ()
+popLoopBreakLabel :: Codegen ()
 popLoopBreakLabel = do
   compiler <- get
   put compiler { loopBreakLabels = init (loopBreakLabels compiler) }
@@ -587,12 +626,10 @@ pushLoopContinueLabel label = do
     { loopContinueLabels = loopContinueLabels compiler ++ [label]
     }
 
-peekLoopContinueLabel :: StateT CodegenState (Either Error) String
+peekLoopContinueLabel :: Codegen String
 peekLoopContinueLabel = gets (last . loopContinueLabels)
 
-popLoopContinueLabel :: StateT CodegenState (Either Error) ()
+popLoopContinueLabel :: Codegen ()
 popLoopContinueLabel = do
   compiler <- get
-  put compiler
-    { loopContinueLabels = init (loopContinueLabels compiler)
-    }
+  put compiler { loopContinueLabels = init (loopContinueLabels compiler) }

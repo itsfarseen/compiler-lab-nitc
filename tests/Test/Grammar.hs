@@ -26,7 +26,7 @@ tests = testGroup
   , test_funcDeclare
   , test_funcDefine
   , test_mkExpArithmetic
-  , test_mkExpLogical
+  , test_mkExpRelational
   , test_mkExpFuncCall
   ]
 
@@ -288,21 +288,21 @@ test_mkExpArithmetic = testCaseSteps "Exp Arithmetic" $ \step -> do
 
   return ()
 
-test_mkExpLogical :: TestTree
-test_mkExpLogical = testCaseSteps "Exp Logical" $ \step -> do
+test_mkExpRelational :: TestTree
+test_mkExpRelational = testCaseSteps "Exp Relational" $ \step -> do
   step "Int Int"
   gAssertRight
-    $ mkExpLogical (spanW (RExp $ ExpNum 1)) OpLT (spanW (RExp $ ExpNum 1))
+    $ mkExpRelational (spanW (RExp $ ExpNum 1)) OpLT (spanW (RExp $ ExpNum 1))
 
   step "Str Str"
-  gAssertRight $ mkExpLogical
+  gAssertRight $ mkExpRelational
     (spanW (RExp $ ExpStr "A"))
     OpLT
     (spanW (RExp $ ExpStr "B"))
 
   step "Int Str"
   gAssertError
-    $ mkExpLogical (spanW (RExp $ ExpNum 1)) OpLT (spanW (RExp $ ExpStr "B"))
+    $ mkExpRelational (spanW (RExp $ ExpNum 1)) OpLT (spanW (RExp $ ExpStr "B"))
 
   return ()
 

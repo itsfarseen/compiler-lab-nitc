@@ -13,6 +13,8 @@ import Frontend (AlexInput(..), AlexInputState(..))
 import Span
 import Error (Error)
 import qualified Error
+
+import Debug.Trace
 }
 
 $plus        = \+
@@ -27,6 +29,8 @@ $lt          = \<
 $gt          = \>
 @lte         = "<="
 @gte         = ">="
+@l_and       = "&&"
+@l_or        = "||"
 
 $equals      = \=
 
@@ -79,6 +83,9 @@ tokens :-
     @lte         {token TokenLE}
     @gte         {token TokenGE}
 
+    @l_and       {token TokenLAnd}
+    @l_or        {token TokenLOr}
+
     $equals      {token TokenEquals}
 
     $semi_colon  {token TokenSemiColon}
@@ -108,14 +115,17 @@ tokens :-
     @string      {token TokenString}
     @bool        {token TokenBool}
 
-    @number      {tokenInt TokenNumber}
-    @strlit      {tokenStr TokenStrLit}
-    @ident       {tokenStr TokenIdent}
+    @number      {tokenInt   TokenNumber}
+    @strlit      {tokenStr   TokenStrLit}
+    @ident       {tokenIdent TokenIdent}
 
 {
 token action = \_ span -> action span
-tokenStr action = \s span -> action $ SpanW s span
+tokenStr action = \s span -> action $ SpanW (trimQuotes s) span
+tokenIdent action = \s span -> action $ SpanW s span
 tokenInt action = \s span -> action $ SpanW (read s) span
+
+trimQuotes s = init $ tail $ s
 
 -- Lowest level API, because we don't specify %wrapper
 
@@ -174,5 +184,5 @@ lexer cont = do
   tok <- readToken
   cont tok
 
-
+dbgs s v = trace (s ++ ": " ++ show v) v
 }

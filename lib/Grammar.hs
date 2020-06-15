@@ -85,6 +85,7 @@ data Exp
   = ExpNum Int
   | ExpStr String
   | MkExpArithmetic RValue OpArithmetic RValue
+  | MkExpRelational RValue OpRelational RValue
   | MkExpLogical RValue OpLogical RValue
   deriving (Show, Eq)
 
@@ -96,13 +97,18 @@ data OpArithmetic
   | OpMod
   deriving (Show, Eq)
 
-data OpLogical
+data OpRelational
   = OpLT
   | OpGT
   | OpLE
   | OpGE
   | OpEQ
   | OpNE
+  deriving (Show, Eq)
+
+data OpLogical
+  = OpLAnd
+  | OpLOr
   deriving (Show, Eq)
 
 data Symbol =
@@ -333,7 +339,7 @@ doFuncDefine retType name args span = do
     >>= declareIfNotDeclared
   fcEnter funcDecl
   flip mapM_ args $ \(SpanW (name, primType) span) ->
-    symInsert $ Symbol
+    fcSymInsert $ Symbol
       { symName     = name
       , symDataType = DataType [] primType
       , symDeclSpan = span
@@ -459,6 +465,32 @@ mkExpArithmetic (SpanW r1 span1) op (SpanW r2 span2) = do
     (errTypeNotAllowed [DataType [] TypeInt] dataType2 span2)
   return $ MkExpArithmetic r1 op r2
 
+mkExpRelational
+  :: (ReadSymbols m, FunctionContext m, ReadFuncs m, MonadError Error m)
+  => SpanW RValue
+  -> OpRelational
+  -> SpanW RValue
+  -> m Exp
+mkExpRelational (SpanW r1 span1) op (SpanW r2 span2) = do
+  let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
+
+  dataType1 <- rValueDataType r1
+  unless (dataType1 `elem` allowedTypes)
+    $ throwError
+    $ errTypeNotAllowed allowedTypes dataType1 span1
+
+  dataType2 <- rValueDataType r2
+  unless (dataType2 `elem` allowedTypes)
+    $ throwError
+    $ errTypeNotAllowed allowedTypes dataType2 span2
+
+  unless (dataType1 == dataType2) $ throwError $ errTypeMismatch
+    dataType1
+    span1
+    dataType2
+    span2
+
+  return $ MkExpRelational r1 op r2
 mkExpLogical
   :: (ReadSymbols m, FunctionContext m, ReadFuncs m, MonadError Error m)
   => SpanW RValue
@@ -466,7 +498,7 @@ mkExpLogical
   -> SpanW RValue
   -> m Exp
 mkExpLogical (SpanW r1 span1) op (SpanW r2 span2) = do
-  let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
+  let allowedTypes = [DataType [] TypeBool]
 
   dataType1 <- rValueDataType r1
   unless (dataType1 `elem` allowedTypes)
@@ -529,6 +561,7 @@ expDataType exp = case exp of
   ExpNum{}          -> DataType [] TypeInt
   ExpStr{}          -> DataType [] TypeString
   MkExpArithmetic{} -> DataType [] TypeInt
+  MkExpRelational{}    -> DataType [] TypeBool
   MkExpLogical{}    -> DataType [] TypeBool
 
 -- DataType

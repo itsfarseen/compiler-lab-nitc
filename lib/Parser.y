@@ -14,6 +14,7 @@ import Text.Printf
 import Control.Monad.Error
 import Data.Functor
 import Data.Tuple.Extra
+import Debug.Trace
 
 }
 
@@ -54,6 +55,9 @@ import Data.Tuple.Extra
     '<='     {TokenLE        _ }
     '>='     {TokenGE        _ }
 
+    '&&'     {TokenLAnd      _ }
+    '||'     {TokenLOr       _ }
+
     begin    {TokenBegin     _ }
     end      {TokenEnd       _ }
 
@@ -74,7 +78,9 @@ import Data.Tuple.Extra
     bool     {TokenBool      _ }
     string   {TokenString    _ }
 
-%nonassoc '=' '==' '<' '>' '<=' '>=' '!='
+%nonassoc '='
+%left '&&' '||'
+%nonassoc '==' '<' '>' '<=' '>=' '!='
 %left '+' '-'
 %left '*' '/' '%'
 
@@ -247,9 +253,11 @@ RValue :: {SpanW RValue}
 RValue:
       LValue            { fmap RLValue $1 }
     | Exp               { fmap RExp $1 }
-    | ident '(' ')'     {% mkExpFuncCall (spanWVal $1) [] (getSpanBwn $1 $3) >>= (\s -> return $ SpanW s (getSpanBwn $1 $3)) }
+    | ident '(' ')'     {% mkExpFuncCall (spanWVal $1) [] (getSpanBwn $1 $3)
+                                            <&> flip SpanW (getSpanBwn $1 $3) }
     | ident '(' RValues ')'
-                        {% mkExpFuncCall (spanWVal $1) $3 (getSpanBwn $1 $4) >>= (\s -> return $ SpanW s (getSpanBwn $1 $4)) }
+                        {% mkExpFuncCall (spanWVal $1) $3 (getSpanBwn $1 $4)
+                                            <&> flip SpanW (getSpanBwn $1 $4) }
 
 RValues :: {[SpanW RValue]}
 RValues:
@@ -266,12 +274,14 @@ Exp:
    | RValue '*' RValue  {% (mkExpArithmetic $1 OpMul $3) <&> flip SpanW (getSpanBwn $1 $3)}
    | RValue '/' RValue  {% (mkExpArithmetic $1 OpDiv $3) <&> flip SpanW (getSpanBwn $1 $3)}
    | RValue '%' RValue  {% (mkExpArithmetic $1 OpMod $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '<' RValue  {% (mkExpLogical $1 OpLT  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '>' RValue  {% (mkExpLogical $1 OpGT  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '<=' RValue {% (mkExpLogical $1 OpLE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '>=' RValue {% (mkExpLogical $1 OpGE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '==' RValue {% (mkExpLogical $1 OpEQ  $3) <&> flip SpanW (getSpanBwn $1 $3)}
-   | RValue '!=' RValue {% (mkExpLogical $1 OpNE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '<' RValue  {% (mkExpRelational $1 OpLT  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '>' RValue  {% (mkExpRelational $1 OpGT  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '<=' RValue {% (mkExpRelational $1 OpLE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '>=' RValue {% (mkExpRelational $1 OpGE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '==' RValue {% (mkExpRelational $1 OpEQ  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '!=' RValue {% (mkExpRelational $1 OpNE  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '&&' RValue {% (mkExpLogical $1 OpLAnd  $3) <&> flip SpanW (getSpanBwn $1 $3)}
+   | RValue '||' RValue {% (mkExpLogical $1 OpLOr  $3) <&> flip SpanW (getSpanBwn $1 $3)}
 
 PrimitiveType :: {SpanW PrimitiveType}
 PrimitiveType:
@@ -285,6 +295,7 @@ Dims:
   | Dims '[' number ']' { SpanW (spanWVal $1 ++ [spanWVal $3]) (getSpanBwn $1 $4) }
 
 {
+dbgs s v = trace (s ++ ": " ++ show v) v
 
 parseError :: Token -> Frontend a
 parseError token = throwError $ Error.customError ("Parsing error 2: " ++ (show token)) $ getSpan token

@@ -1,23 +1,24 @@
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE BlockArguments #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 
 module Test.Backend.Codegen where
 
 import Backend.Codegen as Codegen
+import Backend.Instructions
 import Backend.Instructions (XSMInstr)
-import qualified Backend.Simulator as Simulator
+import Backend.Reg
 import Control.Monad.State.Strict
-import Data.Either.Extra
-import Debug.Trace
-import qualified Grammar
-import Grammar hiding (Func (..), FuncDecl (..), FuncDef (..), Symbol (..))
+import Grammar hiding (Func(..), FuncDecl(..), FuncDef(..), Symbol(..))
 import Span
-import Test.GrammarUtils
 import Test.Tasty
 import Test.Tasty.HUnit
-import Test.Utils
+import qualified Backend.Simulator as Simulator
+import qualified Grammar
+import qualified Grammar as G
 
 span0 :: Span
 span0 = Span 0 0
@@ -25,20 +26,20 @@ span0 = Span 0 0
 span0A :: Applicative a => a Span
 span0A = pure span0
 
+fromRight'' :: Show a => Either a p -> p
 fromRight'' x = case x of
   Left  l -> error $ show l
   Right r -> r
 
-cRun' :: HasCallStack => GrammarM a -> (a -> Codegen b) -> b
-cRun' g compfn =
-  let
-    (a, gstate) = fromRight'' $ gRun g
-    symbols     = head $ gsSymbols gstate
-    funcs       = gsFuncs gstate
-  in fromRight' $ runCodegen (compfn a) (initCodegenState symbols funcs)
 
+cRun2 :: Codegen a -> [Symbol] -> Int -> [Func] -> [XSMInstr]
 cRun2 codegenM syms symsLen funcs = fromRight'' $ runCodegen
   (execSetupGlobalSymtab >> codegenM >> getCodeTranslated)
+  (initCodegenStateInternal syms symsLen funcs)
+
+cRun3 :: Codegen t -> [Symbol] -> Int -> [Func] -> ([XSMInstr], t)
+cRun3 codegenM syms symsLen funcs = fromRight'' $ runCodegen
+  (execSetupGlobalSymtab >> codegenM >>= \a -> (, a) <$> getCodeTranslated)
   (initCodegenStateInternal syms symsLen funcs)
 
 execStmtsGetCode :: Codegen [XSMInstr]
@@ -64,6 +65,7 @@ tests = testGroup
   , test_execStmtContinue
   , test_execFunctionCall
   , test_getLValueLocInReg
+  , test_buildFuncArgsTable
   ]
 
 test_simpleMain :: TestTree
@@ -91,7 +93,8 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
                   { Grammar.funcArgsLen = 0
                   , Grammar.funcSyms    = []
                   , Grammar.funcBody    =
-                    [ StmtWrite $ MkStmtWrite (RExp $ ExpStr "Hello World!")
+                    [ StmtWrite
+                      $ MkStmtWrite (RExp $ ExpStr "Hello World!")
                     , StmtReturn $ MkStmtReturn (RExp $ ExpNum 0)
                     ]
                   , Grammar.funcDefSpan = span0
@@ -185,7 +188,8 @@ test_execStmtRead = testCaseSteps "execStmtRead" $ \step -> do
       [Symbol "foo" (DataType [] TypeInt) 0]
       1
       []
-  let simulator = Simulator.run $ Simulator.initWithStdin ["10", "555"] code
+  let
+    simulator = Simulator.run $ Simulator.initWithStdin ["10", "555"] code
   Simulator.getMemory 4096 simulator @?= "555"
 
 test_execStmtWrite :: TestTree
@@ -199,7 +203,8 @@ test_execStmtWrite = testCaseSteps "execStmtWrite" $ \step -> do
       []
       0
       []
-  let simulator = Simulator.run (Simulator.initWithStdin ["10", "555"] code)
+  let
+    simulator = Simulator.run (Simulator.initWithStdin ["10", "555"] code)
   Simulator.getStdout simulator @?= ["100", "ASD"]
 
 test_execStmtIf :: TestTree
@@ -209,7 +214,7 @@ test_execStmtIf = testCaseSteps "execStmtIf" $ \step -> do
     code = cRun2
       do
         execStmtIf $ MkStmtIf
-          (RExp $ MkExpLogical (RExp $ ExpNum 1) OpEQ (RExp $ ExpNum 1))
+          (RExp $ MkExpRelational (RExp $ ExpNum 1) OpEQ (RExp $ ExpNum 1))
           (   StmtWrite
           <$> [ MkStmtWrite (RExp $ ExpNum 100)
               , MkStmtWrite (RExp $ ExpNum 200)
@@ -228,7 +233,7 @@ test_execStmtIf = testCaseSteps "execStmtIf" $ \step -> do
     code = cRun2
       do
         execStmtIf $ MkStmtIf
-          (RExp $ MkExpLogical (RExp $ ExpNum 1) OpEQ (RExp $ ExpNum 2))
+          (RExp $ MkExpRelational (RExp $ ExpNum 1) OpEQ (RExp $ ExpNum 2))
           (   StmtWrite
           <$> [ MkStmtWrite (RExp $ ExpNum 100)
               , MkStmtWrite (RExp $ ExpNum 200)
@@ -250,7 +255,7 @@ test_execStmtIfElse = testCaseSteps "execStmtIfElse" $ \step -> do
     code = cRun2
       do
         execStmtIfElse $ MkStmtIfElse
-          (RExp $ MkExpLogical (RExp $ ExpNum 1) OpEQ (RExp $ ExpNum 1))
+          (RExp $ MkExpRelational (RExp $ ExpNum 1) OpEQ (RExp $ ExpNum 1))
           (   StmtWrite
           <$> [ MkStmtWrite (RExp $ ExpNum 100)
               , MkStmtWrite (RExp $ ExpNum 200)
@@ -275,7 +280,7 @@ test_execStmtIfElse = testCaseSteps "execStmtIfElse" $ \step -> do
     code = cRun2
       do
         execStmtIfElse $ MkStmtIfElse
-          (RExp $ MkExpLogical (RExp $ ExpNum 1) OpNE (RExp $ ExpNum 1))
+          (RExp $ MkExpRelational (RExp $ ExpNum 1) OpNE (RExp $ ExpNum 1))
           (   StmtWrite
           <$> [ MkStmtWrite (RExp $ ExpNum 100)
               , MkStmtWrite (RExp $ ExpNum 200)
@@ -304,8 +309,10 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
       do
         execStmtAssign $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
         execStmtWhile $ MkStmtWhile
-          ( RExp
-          $ MkExpLogical (RLValue $ LValue [] "foo") OpLT (RExp $ ExpNum 10)
+          (RExp $ MkExpRelational
+            (RLValue $ LValue [] "foo")
+            OpLT
+            (RExp $ ExpNum 10)
           )
           [ StmtAssign $ MkStmtAssign
             (LValue [] "foo")
@@ -323,15 +330,19 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
       []
   let simulator = Simulator.run (Simulator.init code)
   Simulator.getMemory 4096 simulator @?= "10"
-  Simulator.getStdout simulator @?= (take 10 $ repeat "loop") ++ ["foo", "bar"]
+  Simulator.getStdout simulator
+    @?= (take 10 $ repeat "loop")
+    ++  ["foo", "bar"]
   step "While stmt false"
   let
     code = cRun2
       do
         execStmtAssign $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 15)
         execStmtWhile $ MkStmtWhile
-          ( RExp
-          $ MkExpLogical (RLValue $ LValue [] "foo") OpLT (RExp $ ExpNum 10)
+          (RExp $ MkExpRelational
+            (RLValue $ LValue [] "foo")
+            OpLT
+            (RExp $ ExpNum 10)
           )
           [ StmtAssign $ MkStmtAssign
             (LValue [] "foo")
@@ -358,8 +369,10 @@ test_execStmtBreak = testCaseSteps "execStmtBreak" $ \_ -> do
       do
         execStmtAssign $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
         execStmtWhile $ MkStmtWhile
-          ( RExp
-          $ MkExpLogical (RLValue $ LValue [] "foo") OpLT (RExp $ ExpNum 10)
+          (RExp $ MkExpRelational
+            (RLValue $ LValue [] "foo")
+            OpLT
+            (RExp $ ExpNum 10)
           )
           [ StmtBreak $ MkStmtBreak
           , StmtAssign $ MkStmtAssign
@@ -387,8 +400,10 @@ test_execStmtContinue = testCaseSteps "execStmtContinue" $ \_ -> do
       do
         execStmtAssign $ MkStmtAssign (LValue [] "foo") (RExp $ ExpNum 0)
         execStmtWhile $ MkStmtWhile
-          ( RExp
-          $ MkExpLogical (RLValue $ LValue [] "foo") OpLT (RExp $ ExpNum 10)
+          (RExp $ MkExpRelational
+            (RLValue $ LValue [] "foo")
+            OpLT
+            (RExp $ ExpNum 10)
           )
           [ StmtAssign $ MkStmtAssign
             (LValue [] "foo")
@@ -410,60 +425,87 @@ test_execStmtContinue = testCaseSteps "execStmtContinue" $ \_ -> do
   Simulator.getStdout simulator @?= ["foo", "bar"]
 
 test_execFunctionCall :: TestTree
-test_execFunctionCall = testCaseSteps "execFunctionCallRValue" $ \step -> do
-  step "No args"
+test_execFunctionCall = testCaseSteps "execFunctionCall" $ \step -> do
+  step "Without arguments - Write"
+  let
+    code = cRun2
+      do
+        r <- execStmtRValue $ MkStmtRValue $ RFuncCall "foo" []
+        appendCode [XSM_INT 10]
+        execFuncDefs
+        return r
+      []
+      0
+      [ Func
+          { funcName          = "foo"
+          , funcRetType       = TypeInt
+          , funcSymbols       = []
+          , funcBody          =
+            [StmtWrite $ MkStmtWrite (RExp $ ExpStr "Hello World")]
+          , funcLocalVarsSize = 0
+          , funcLabel         = "F1"
+          }
+      ]
 
--- do
---   execStmtRValue (StmtRValue (RFuncCall "foo" []))
---   execFuncDef
+  -- mapM print code
+  let simulator = Simulator.run (Simulator.init code)
+  Simulator.getStdout simulator @?= ["Hello World"]
 
--- let
---   code = cRun
---     do
---       doVarDeclare "foo" TypeInt [] span0
---       doVarDeclare "bar" TypeInt [] span0
---       define <- doFuncDefine
---         TypeInt
---         "inc"
---         [spanW ("i", TypeInt)]
---         span0
---       join $ define <$> sequence
---         [ do
---           lhs <- mkLValue (spanW "foo") []
---           rhs <- RLValue <$> mkLValue (spanW "i") []
---           StmtAssign <$> mkStmtAssign lhs rhs span0
---         , do
---           StmtReturn <$> join
---             (   mkStmtReturn
---             <$> (RExp <$> join
---                   (   mkExpArithmetic
---                   <$> (   spanW
---                       .   RLValue
---                       <$> mkLValue (spanW "i") []
---                       )
---                   <*> (pure OpAdd)
---                   <*> (pure . spanW $ RExp $ ExpNum 1)
---                   )
---                 )
---             <*> (pure span0)
---             )
---         ]
---       sequence
---         [ StmtAssign <$> join
---             (   mkStmtAssign
---             <$> (mkLValue (spanW "bar") [])
---             <*> (mkExpFuncCall
---                   "inc"
---                   [spanW $ RExp $ ExpNum 100]
---                   span0
---                 )
---             <*> span0A
---             )
---         ]
---     execStmtsGetCode
--- let simulator = Simulator.run (Simulator.init code)
--- Simulator.getMemory 4096 simulator @?= "100"
--- Simulator.getMemory 4097 simulator @?= "101"
+  step "Without arguments - Return"
+  let
+    (code, r) = cRun3
+      do
+        r <- getRValueInReg (RFuncCall "foo" [])
+        appendCode [XSM_INT 10]
+        execFuncDefs
+        return r
+      []
+      0
+      [ Func
+          { funcName          = "foo"
+          , funcRetType       = TypeInt
+          , funcSymbols       = []
+          , funcBody = [StmtReturn $ MkStmtReturn $ RExp $ ExpNum (123)]
+          , funcLocalVarsSize = 0
+          , funcLabel         = "F1"
+          }
+      ]
+
+  let simulator = Simulator.run (Simulator.init code)
+  let rVal      = read @Int $ Simulator.getRegVal r simulator
+  rVal @?= 123
+
+  step "With arguments"
+  let
+    (code, r) = cRun3
+      do
+        r <- getRValueInReg
+          (RFuncCall "foo" [RExp $ ExpNum 123, RExp $ ExpNum 444])
+        appendCode [XSM_INT 10]
+        execFuncDefs
+        return r
+      []
+      0
+      [ Func
+          { funcName          = "foo"
+          , funcRetType       = TypeInt
+          , funcSymbols       =
+            [ Symbol "a" (DataType [] TypeInt) (-4)
+            , Symbol "b" (DataType [] TypeInt) (-3)
+            ]
+          , funcBody          =
+            [ StmtReturn $ MkStmtReturn $ RExp $ MkExpArithmetic
+                (RLValue $ LValue [] "a")
+                OpSub
+                (RLValue $ LValue [] "b")
+            ]
+          , funcLocalVarsSize = 0
+          , funcLabel         = "F1"
+          }
+      ]
+  let simulator = Simulator.run (Simulator.init code)
+  let rVal      = read @Int $ Simulator.getRegVal r simulator
+  rVal @?= 123 - 444
 
 ----------------------------------------------------------------------------------------
 
@@ -471,41 +513,91 @@ test_getLValueLocInReg :: TestTree
 test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
   step "Simple"
   let
-    (code :: [XSMInstr], r1, r2) = cRun'
+    (code :: [XSMInstr], (r1, r2)) = cRun3
       do
-        doVarDeclare "foo" TypeInt [] span0
-        doVarDeclare "bar" TypeInt [] span0
-        lValue1 <- mkLValue (spanW "foo") []
-        lValue2 <- mkLValue (spanW "bar") []
-        return (lValue1, lValue2)
-      (\(lValue1, lValue2) -> do
-        r1   <- getLValueLocInReg (lValue1)
-        r2   <- getLValueLocInReg (lValue2)
-        code <- gets Codegen.code
-        return (code, r1, r2)
-      )
+        r1 <- getLValueLocInReg (LValue [] "foo")
+        r2 <- getLValueLocInReg (LValue [] "bar")
+        return (r1, r2)
+      [ Symbol "foo" (DataType [] TypeInt) 0
+      , Symbol "bar" (DataType [] TypeInt) 1
+      ]
+      2
+      []
+
   let simulator = Simulator.run (Simulator.init code)
-  let loc1      = Simulator.getRegVal r1 simulator
-  let loc2      = Simulator.getRegVal r2 simulator
-  (read loc1 >= (4096 :: Int)) @? "Variables must be in stack"
-  (read loc2 >= (4096 :: Int)) @? "Variables must be in stack"
-  loc1 /= loc2 @? "Two variables must have different location"
+  let loc1      = read @Int $ Simulator.getRegVal r1 simulator
+  let loc2      = read @Int $ Simulator.getRegVal r2 simulator
+  loc1 @?= 4096
+  loc2 @?= 4097
+
   step "2D Array index"
   let
-    (code, basereg, reg) = cRun'
+    (code, (basereg, reg)) = cRun3
       do
-        doVarDeclare "foo" TypeInt [3, 2] span0
-        doVarDeclare "bar" TypeInt [4, 5] span0
-        l1 <- mkLValue (spanW "bar") []
-        l2 <- mkLValue (spanW "bar") (spanW . RExp . ExpNum <$> [2, 3])
-        return (l1, l2)
-      (\(l1, l2) -> do
-        base <- getLValueLocInReg l1
-        r    <- getLValueLocInReg l2
-        code <- gets Codegen.code
-        return (code, base, r)
-      )
+        r1 <- getLValueLocInReg (LValue [] "bar")
+        r2 <- getLValueLocInReg (LValue (RExp . ExpNum <$> [2, 3]) "bar")
+        return (r1, r2)
+      [ Symbol "foo" (DataType [3, 2] TypeInt) 0
+      , Symbol "bar" (DataType [4, 5] TypeInt) 6
+      ]
+      26
+      []
+
   let simulator = Simulator.run (Simulator.init code)
-  let loc       = read (Simulator.getRegVal reg simulator) :: Int
-  let base      = read (Simulator.getRegVal basereg simulator) :: Int
+  let loc       = read @Int $ (Simulator.getRegVal reg simulator)
+  let base      = read @Int $ (Simulator.getRegVal basereg simulator)
+  base @?= 4096 + 6
   loc @?= base + 2 * 5 + 3
+
+
+  step "Function Args"
+  let
+    (code, (r1, r2)) = cRun3
+      do
+        appendCode [XSM_MOV_Int BP 4900]
+        modify
+          (\s -> s
+            { lSymbols =
+              Just
+                $ [ Symbol "foo" (DataType [] TypeInt) (-3)
+                  , Symbol "bar" (DataType [] TypeInt) (-2)
+                  ]
+            }
+          )
+        r1 <- getLValueLocInReg (LValue [] "foo")
+        r2 <- getLValueLocInReg (LValue [] "bar")
+        return (r1, r2)
+      []
+      0
+      []
+
+  let simulator = Simulator.run (Simulator.init code)
+  let r1Loc     = read @Int $ (Simulator.getRegVal r1 simulator)
+  let r2Loc     = read @Int $ (Simulator.getRegVal r2 simulator)
+  r1Loc @?= 4900 - 3
+  r2Loc @?= 4900 - 2
+
+test_buildFuncArgsTable :: TestTree
+test_buildFuncArgsTable = testCaseSteps "buildFuncArgsTable" $ \steps ->
+  do
+    let
+      symbols =
+        [ G.Symbol
+            { G.symName     = "foo"
+            , G.symDataType = DataType [] TypeInt
+            , G.symDeclSpan = undefined
+            }
+        , G.Symbol
+            { G.symName     = "bar"
+            , G.symDataType = DataType [] TypeInt
+            , G.symDeclSpan = undefined
+            }
+        ]
+    let [s1, s2] = buildFuncArgsTable symbols (-3)
+    s1 @?= Symbol {symName = "foo", symDataType = DataType [] TypeInt, symRelLoc = -4}
+    s2 @?= Symbol {symName = "bar", symDataType = DataType [] TypeInt, symRelLoc = -3}
+
+
+
+
+

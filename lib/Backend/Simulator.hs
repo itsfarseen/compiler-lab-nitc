@@ -12,9 +12,9 @@ import Data.Maybe
 import Flow
 import Text.Read (readMaybe)
 
--- import Debug.Trace
--- dbg v = trace (toString v) v
--- dbgs s v = trace (s ++ show v) v
+import Debug.Trace
+dbg v = trace (toString v) v
+dbgs s v = trace (s ++ show v) v
 -- dbgst s v = trace (s ++ v) v
 
 data Machine =
@@ -138,7 +138,7 @@ execute !instr !machine =
             in
               machine
               |> setRegVal r1 memVal --
-              |> setRegVal SP (show (spVal - 1))
+              |> setRegVal SP (spVal - 1)
 
           XSM_ADD r1 r2 ->
             let
@@ -206,7 +206,7 @@ execute !instr !machine =
               ipSav = read @Int (getMemory spVal machine)
             in
               machine {ip = ipSav - 2}
-              |> setRegVal SP (show (spVal - 1))
+              |> setRegVal SP (spVal - 1)
           XSM_UTJ{} ->
             error $ "Untranslated jump encountered" ++ toString instr
 
