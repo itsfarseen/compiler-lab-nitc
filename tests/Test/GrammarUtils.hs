@@ -37,7 +37,7 @@ instance ReadSymbols GrammarM where
     gets (find (\x -> symName x == name) . concat . gsSymbols)
 
 instance WriteSymbols GrammarM where
-  symInsert sym = modify
+  gSymInsert sym = modify
     (\state ->
       let
         (symtab : ss) = gsSymbols state

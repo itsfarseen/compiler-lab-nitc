@@ -165,7 +165,7 @@ doVarDeclare identName primType dims span = do
       return $ ()
     else do
       symLookup identName >>= throwSymbolExists
-      symInsert symbol
+      gSymInsert symbol
       return $ ()
  where
   dataType = DataType dims primType
@@ -586,7 +586,7 @@ class Monad m => ReadSymbols m where
   symLookup :: String -> m (Maybe Symbol)
 
 class Monad m => WriteSymbols m where
-  symInsert :: Symbol -> m ()
+  gSymInsert :: Symbol -> m ()
 
 class Monad m => FunctionContext m where
   fcEnter :: FuncDecl -> m ()

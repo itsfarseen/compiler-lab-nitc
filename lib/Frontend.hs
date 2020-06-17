@@ -66,7 +66,7 @@ instance ReadSymbols Frontend where
   symLookup name = gets $ (find $ \s -> symName s == name) . gSymbols
 
 instance WriteSymbols Frontend where
-  symInsert symbol = modify $ \frontendData -> frontendData
+  gSymInsert symbol = modify $ \frontendData -> frontendData
     { gSymbols = insertList symName symbol (gSymbols frontendData)
     }
 
