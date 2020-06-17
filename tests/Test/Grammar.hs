@@ -3,10 +3,21 @@ module Test.Grammar where
 
 import Grammar
 import Span
-import Test.GrammarUtils
 import Test.Utils
 import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit
+import Frontend (Frontend)
+import qualified Frontend
+import Error (Error)
+
+gRun :: Frontend a -> Either Error a
+gRun = Frontend.runFrontend (Frontend.initData "")
+
+gAssertError :: Frontend a -> IO ()
+gAssertError = assertError . gRun
+
+gAssertRight :: Frontend a -> IO ()
+gAssertRight x = assertRight $ gRun x >> return ()
 
 -- Update list of tests - Run the following line as vim macro - 0w"qy$@q -
 -- mq:let @b="" | g/\<test_\i\+\> ::/exe 'norm "ByE'|let @B=", "'q4j$di["bphxx

@@ -90,7 +90,6 @@ test-suite test
     Test.Backend.Simulator
     Test.Golden
     Test.Grammar
-    Test.GrammarUtils
     Test.Utils
     Token
 
