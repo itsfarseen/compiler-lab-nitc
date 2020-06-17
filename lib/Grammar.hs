@@ -150,9 +150,11 @@ data DataType
       PrimitiveType
   deriving (Eq)
 
-data UserType = UserType { utName :: String
-                         , utFields :: [Symbol]
-                         }
+data UserType =
+  UserType
+    { utName :: String
+    , utFields :: [Symbol]
+    }
 
 doVarDeclare
   :: (FunctionContext m, MonadError Error m, ReadSymbols m, WriteSymbols m)
