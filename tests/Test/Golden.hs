@@ -3,7 +3,6 @@
 module Test.Golden where
 
 import Test.Tasty
-import Test.Tasty.HUnit
 import Test.Tasty.Golden
 import System.Directory
 import System.FilePath
@@ -28,9 +27,6 @@ main = do
           let
             stdinFile  = explFile -<.> "stdin"
             goldenFile = explFile -<.> "stdout"
-            -- golden <- readFile goldenFile
-            -- stdout <- runGoldenTest explFile stdinFile
-            -- golden @=? stdout
           in goldenVsStringDiff
             (takeFileName explFile)
             (\ref new -> ["diff", "--side-by-side", ref, new])
