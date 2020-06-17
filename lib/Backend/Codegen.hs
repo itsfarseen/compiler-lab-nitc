@@ -22,8 +22,8 @@ import Data.List (find)
 import Data.Maybe (fromJust)
 
 
-import Debug.Trace
-dbgs s v = trace (s ++ ": " ++ show v) v
+-- import Debug.Trace
+-- dbgs s v = trace (s ++ ": " ++ show v) v
 
 type Codegen = StateT CodegenState (Either Error)
 
@@ -259,6 +259,9 @@ execStmtAssign stmt = do
 
 execStmtRead :: StmtRead -> Codegen ()
 execStmtRead stmt = do
+  usedRegs <- getUsedRegs
+  backupRegs usedRegs
+  pushRegStack
   let MkStmtRead lValue = stmt
   lValueLocReg <- getLValueLocInReg lValue
   t1           <- getFreeReg
@@ -281,13 +284,38 @@ execStmtRead stmt = do
   appendCode code
   releaseReg t1
   releaseReg lValueLocReg
+  restoreRegs usedRegs
+  popRegStack
 
 execStmtWrite :: StmtWrite -> Codegen ()
 execStmtWrite stmt = do
+  usedRegs <- getUsedRegs
+  backupRegs usedRegs
+  pushRegStack
   let MkStmtWrite rValue = stmt
   reg <- getRValueInReg rValue
-  printReg reg
+  t1 <- getFreeReg
+  let
+    code =
+      [ XSM_MOV_Int t1 5 -- arg1: Call Number (Write = 5)
+      , XSM_PUSH t1
+      , XSM_MOV_Int t1 (-2) -- arg2: File Pointer (Stdout = -2)
+      , XSM_PUSH t1
+      , XSM_PUSH reg -- arg3: data to be written
+      , XSM_PUSH R0 -- arg4: unused
+      , XSM_PUSH R0 -- arg5: unused
+      , XSM_INT 7 -- Int 7 = Write System Call
+      , XSM_POP t1 -- arg5
+      , XSM_POP t1 -- arg4
+      , XSM_POP t1 -- arg3
+      , XSM_POP t1 -- arg2
+      , XSM_POP t1 -- arg1
+      ]
+  appendCode code
+  releaseReg t1
   releaseReg reg
+  restoreRegs usedRegs
+  popRegStack
 
 execStmtIf :: StmtIf -> Codegen ()
 execStmtIf stmt = do
@@ -365,28 +393,6 @@ execStmtRValue stmt = do
   let (MkStmtRValue rValue) = stmt
   r1 <- getRValueInReg rValue
   releaseReg r1
-
-printReg :: Reg -> Codegen ()
-printReg reg = do
-  t1 <- getFreeReg
-  let
-    code =
-      [ XSM_MOV_Int t1 5 -- arg1: Call Number (Write = 5)
-      , XSM_PUSH t1
-      , XSM_MOV_Int t1 (-2) -- arg2: File Pointer (Stdout = -2)
-      , XSM_PUSH t1
-      , XSM_PUSH reg -- arg3: data to be written
-      , XSM_PUSH R0 -- arg4: unused
-      , XSM_PUSH R0 -- arg5: unused
-      , XSM_INT 7 -- Int 7 = Write System Call
-      , XSM_POP t1 -- arg5
-      , XSM_POP t1 -- arg4
-      , XSM_POP t1 -- arg3
-      , XSM_POP t1 -- arg2
-      , XSM_POP t1 -- arg1
-      ]
-  appendCode code
-  releaseReg t1
 
 getLValueLocInReg :: LValue -> Codegen Reg
 getLValueLocInReg lValue = do
