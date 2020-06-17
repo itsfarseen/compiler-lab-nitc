@@ -80,7 +80,7 @@ instance WriteFuncs Frontend where
     }
 
 instance ReadLoopStack Frontend where
-  hasLoop = gets (\x -> loopStack x == 0)
+  hasLoop = gets (\x -> loopStack x > 0)
 
 instance LoopStackWriter Frontend where
   pushLoop = modify (\x -> x{loopStack = loopStack x + 1})
