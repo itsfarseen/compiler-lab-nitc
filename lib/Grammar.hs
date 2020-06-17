@@ -171,7 +171,7 @@ doVarDeclare identName primType dims span = do
       fcSymInsert symbol
       return $ ()
     else do
-      symLookup identName >>= throwSymbolExists
+      gSymLookup identName >>= throwSymbolExists
       gSymInsert symbol
       return $ ()
  where
@@ -528,7 +528,7 @@ symLookupCombined name = do
   lSym      <- if fcHasCtxt then fcSymLookup name else return $ Nothing
   case lSym of
     Just sym -> return $ Just sym
-    Nothing  -> symLookup name
+    Nothing  -> gSymLookup name
 
 lValueDataType
   :: (FunctionContext m, ReadSymbols m, FunctionContext m)
@@ -577,7 +577,7 @@ instance Show DataType where
 -- Typeclasses
 
 class Monad m => ReadSymbols m where
-  symLookup :: String -> m (Maybe Symbol)
+  gSymLookup :: String -> m (Maybe Symbol)
 
 class Monad m => WriteSymbols m where
   gSymInsert :: Symbol -> m ()

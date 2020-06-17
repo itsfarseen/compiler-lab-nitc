@@ -33,7 +33,7 @@ newtype GrammarM a
     )
 
 instance ReadSymbols GrammarM where
-  symLookup name =
+  gSymLookup name =
     gets (find (\x -> symName x == name) . concat . gsSymbols)
 
 instance WriteSymbols GrammarM where

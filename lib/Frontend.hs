@@ -63,7 +63,7 @@ insertList key a list = case list of
 -- Instances
 
 instance ReadSymbols Frontend where
-  symLookup name = gets $ (find $ \s -> symName s == name) . gSymbols
+  gSymLookup name = gets $ (find $ \s -> symName s == name) . gSymbols
 
 instance WriteSymbols Frontend where
   gSymInsert symbol = modify $ \frontendData -> frontendData
