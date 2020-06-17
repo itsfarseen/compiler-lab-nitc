@@ -151,6 +151,10 @@ data DataType
       PrimitiveType
   deriving (Eq)
 
+data UserType = UserType { utName :: String
+                         , utFields :: [Symbol]
+                         }
+
 doVarDeclare :: (FunctionContext m, MonadError Error m, ReadSymbols m, WriteSymbols m) => String -> PrimitiveType -> [Int] -> Span -> m ()
 doVarDeclare identName primType dims span = do
   fcHasCtxt <- fcHasCtxt
