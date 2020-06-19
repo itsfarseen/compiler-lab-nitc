@@ -23,8 +23,8 @@ prompt text = do
 frontend :: Frontend ([Grammar.Func], [Grammar.Symbol])
 frontend = do
   Parser.parse
-  symbols <- gets Frontend.gSymbols
-  funcs <- gets Frontend.funcs
+  symbols <- Grammar.gsGets Grammar.gsGSymbols
+  funcs <- Grammar.gsGets Grammar.gsFuncs
   return (funcs, symbols)
 
 backend mode = do
@@ -67,7 +67,7 @@ main = do
   input <- readFile inputFile
   handleError input inputFile $ do
     (funcs, symbols) <- liftEither
-      $ Frontend.runFrontend (Frontend.initData input) frontend
+      $ Frontend.runFrontend (Frontend.initData input Grammar.gsInit) frontend
     output <- liftEither $ Codegen.runCodegen (backend codeOutputMode) (initCodegenState symbols funcs)
     liftIO $ writeFile outputFile output
  where

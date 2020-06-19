@@ -8,12 +8,101 @@
 module Grammar where
 
 import Control.Monad (unless)
-import Control.Monad.Except (MonadError, throwError)
 import Control.Monad.Extra (unlessM)
-import Data.Maybe (fromJust)
+import Data.Maybe (fromJust, isJust)
+import Data.List (find)
 import Error (Error)
 import qualified Error
 import Span
+import Data.Bifunctor (second)
+
+--
+
+
+class Monad m => GrammarM m where
+  gsGet :: m GrammarState
+  gsPut :: GrammarState -> m ()
+  gThrowError :: Error -> m a
+
+
+gsGets :: GrammarM m => (GrammarState -> a) -> m a
+gsGets f = f <$> gsGet
+
+gsModify :: GrammarM m => (GrammarState -> GrammarState) -> m ()
+gsModify f = (f <$> gsGet) >>= gsPut
+
+data GrammarState =
+  GrammarState
+    { gsGSymbols :: [Symbol]
+    , gsFuncs :: [Func]
+    , gsFuncContext :: Maybe (FuncDecl, [Symbol])
+    , gsLoopStack :: Int
+    }
+
+gsInit = GrammarState
+  { gsGSymbols    = []
+  , gsFuncs       = []
+  , gsFuncContext = Nothing
+  , gsLoopStack   = 0
+  }
+
+insertList key a list = case list of
+  [] -> [a]
+  (a' : as') ->
+    (if key a == key a' then a : as' else a' : insertList key a as')
+
+gSymLookup name = gsGets $ (find $ \s -> symName s == name) . gsGSymbols
+gSymInsert symbol = gsModify
+  $ \gs -> gs { gsGSymbols = insertList symName symbol (gsGSymbols gs) }
+
+funcLookup name =
+  gsGets $ (find $ \s -> (funcName . funcDecl $ s) == name) . gsFuncs
+
+funcInsert func = gsModify $ \gs ->
+  gs { gsFuncs = insertList (funcName . funcDecl) func (gsFuncs gs) }
+
+hasLoop :: GrammarM m => m Bool
+hasLoop = gsGets (\gs -> gsLoopStack gs >= 0)
+
+pushLoop :: GrammarM m => m ()
+pushLoop = gsModify (\gs -> gs { gsLoopStack = gsLoopStack gs + 1 })
+
+popLoop :: GrammarM m => m ()
+popLoop =
+  gsModify (\gs -> gs { gsLoopStack = max 0 (gsLoopStack gs - 1) })
+
+fcEnter :: GrammarM m => FuncDecl -> m ()
+fcEnter funcDecl =
+  gsModify $ \s -> s { gsFuncContext = Just (funcDecl, []) }
+
+fcExit :: GrammarM m => m [Symbol]
+fcExit = do
+  (_, syms) <- gsGets (fromJust . gsFuncContext)
+  gsModify $ \s -> s { gsFuncContext = Nothing }
+  return syms
+
+fcGet :: GrammarM m => m FuncDecl
+fcGet = gsGets (fst . fromJust . gsFuncContext)
+
+fcSymLookup :: GrammarM m => String -> m (Maybe Symbol)
+fcSymLookup name =
+  gsGets
+    $ (find $ \s -> symName s == name)
+    . snd
+    . fromJust
+    . gsFuncContext
+
+fcSymInsert :: GrammarM m => Symbol -> m ()
+fcSymInsert symbol = gsModify $ \gs -> gs
+  { gsFuncContext = fmap
+    (second $ insertList symName symbol)
+    (gsFuncContext gs)
+  }
+
+fcHasCtxt :: GrammarM m => m Bool
+fcHasCtxt = gsGets (isJust . gsFuncContext)
+
+--
 
 data Stmt
   = StmtAssign StmtAssign
@@ -141,7 +230,7 @@ data FuncDef
             , funcDefSpan   :: Span
             }
 
-data PrimitiveType = TypeInt | TypeBool | TypeString
+data PrimitiveType = TypeInt | TypeBool | TypeString | TypeUser String
   deriving (Eq)
 
 data DataType
@@ -157,12 +246,7 @@ data UserType =
     }
 
 doVarDeclare
-  :: (FunctionContext m, MonadError Error m, ReadSymbols m, WriteSymbols m)
-  => String
-  -> PrimitiveType
-  -> [Int]
-  -> Span
-  -> m ()
+  :: GrammarM m => String -> PrimitiveType -> [Int] -> Span -> m ()
 doVarDeclare identName primType dims span = do
   fcHasCtxt <- fcHasCtxt
   if fcHasCtxt
@@ -182,128 +266,95 @@ doVarDeclare identName primType dims span = do
     , symDataType = dataType
     }
   throwSymbolExists maybeSym = case maybeSym of
-    Nothing -> return ()
-    Just sym ->
-      throwError $ errIdentifierRedeclared identName (symDeclSpan sym) span
+    Nothing  -> return ()
+    Just sym -> gThrowError
+      $ errIdentifierRedeclared identName (symDeclSpan sym) span
 
-mkStmtAssign
-  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
-  => LValue
-  -> RValue
-  -> Span
-  -> m StmtAssign
+mkStmtAssign :: GrammarM m => LValue -> RValue -> Span -> m StmtAssign
 mkStmtAssign lhs rhs span = do
   lhsType     <- lValueDataType lhs
   lhsDeclSpan <- lValueDeclSpan lhs
   rhsType     <- rValueDataType rhs
   let (DataType dims _) = lhsType
   unless (length dims == 0)
-    $ throwError --
+    $ gThrowError --
     $ errArrayNotAllowed span lhsDeclSpan
   unless (lhsType == rhsType)
-    $ throwError --
+    $ gThrowError --
     $ errTypeMismatch lhsType lhsDeclSpan rhsType span
   return $ MkStmtAssign lhs rhs
 
-mkStmtRead
-  :: (MonadError Error m, ReadSymbols m, FunctionContext m)
-  => SpanW LValue
-  -> m StmtRead
+mkStmtRead :: GrammarM m => SpanW LValue -> m StmtRead
 mkStmtRead (SpanW lValue lValueSpan) = do
   dataType <- lValueDataType lValue
   let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
   unless (dataType `elem` allowedTypes)
-    $ throwError --
+    $ gThrowError --
     $ errTypeNotAllowed allowedTypes dataType lValueSpan
   return $ MkStmtRead lValue
 
-mkStmtWrite
-  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
-  => SpanW RValue
-  -> m StmtWrite
+mkStmtWrite :: GrammarM m => SpanW RValue -> m StmtWrite
 mkStmtWrite (SpanW rValue rValueSpan) = do
   dataType <- rValueDataType rValue
   let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
   unless (dataType `elem` allowedTypes)
-    $ throwError --
+    $ gThrowError --
     $ errTypeNotAllowed allowedTypes dataType rValueSpan
   return $ MkStmtWrite rValue
 
-mkStmtIf
-  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
-  => SpanW RValue
-  -> [Stmt]
-  -> m StmtIf
+mkStmtIf :: GrammarM m => SpanW RValue -> [Stmt] -> m StmtIf
 mkStmtIf (SpanW cond span) body = do
   dataType <- rValueDataType cond
   unless (dataType == DataType [] TypeBool)
-    $ throwError
+    $ gThrowError
     $ errTypeNotAllowed [DataType [] TypeBool] dataType span
   return $ MkStmtIf cond body
 
 mkStmtIfElse
-  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
-  => SpanW RValue
-  -> [Stmt]
-  -> [Stmt]
-  -> m StmtIfElse
+  :: GrammarM m => SpanW RValue -> [Stmt] -> [Stmt] -> m StmtIfElse
 mkStmtIfElse (SpanW cond span) thenBody elseBody = do
   dataType <- rValueDataType cond
   unless (dataType == DataType [] TypeBool)
-    $ throwError
+    $ gThrowError
     $ errTypeNotAllowed [DataType [] TypeBool] dataType span
   return $ MkStmtIfElse cond thenBody elseBody
 
-mkStmtWhile
-  :: (MonadError Error m, ReadSymbols m, FunctionContext m, ReadFuncs m)
-  => SpanW RValue
-  -> [Stmt]
-  -> m StmtWhile
+mkStmtWhile :: GrammarM m => SpanW RValue -> [Stmt] -> m StmtWhile
 mkStmtWhile (SpanW cond span) body = do
   dataType <- rValueDataType cond
   unless (dataType == DataType [] TypeBool)
-    $ throwError
+    $ gThrowError
     $ errTypeNotAllowed [DataType [] TypeBool] dataType span
   return $ MkStmtWhile cond body
 
-mkStmtBreak :: (MonadError Error m, ReadLoopStack m) => Span -> m StmtBreak
+mkStmtBreak :: GrammarM m => Span -> m StmtBreak
 mkStmtBreak span = do
   unlessM hasLoop throwOutOfLoop
   return $ MkStmtBreak
-  where throwOutOfLoop = throwError (Error.syntaxError span)
+  where throwOutOfLoop = gThrowError (Error.syntaxError span)
 
-mkStmtContinue
-  :: (MonadError Error m, ReadLoopStack m) => Span -> m StmtContinue
+mkStmtContinue :: GrammarM m => Span -> m StmtContinue
 mkStmtContinue span = do
   unlessM hasLoop throwOutOfLoop
   return $ MkStmtContinue
-  where throwOutOfLoop = throwError (Error.syntaxError span)
+  where throwOutOfLoop = gThrowError (Error.syntaxError span)
 
 mkStmtRValue :: Monad m => RValue -> m StmtRValue
 mkStmtRValue rValue = do
   return $ MkStmtRValue rValue
 
-mkStmtReturn
-  :: ( FunctionContext m
-     , MonadError Error m
-     , ReadSymbols m
-     , FunctionContext m
-     , ReadFuncs m
-     )
-  => RValue
-  -> Span
-  -> m StmtReturn
+mkStmtReturn :: GrammarM m => RValue -> Span -> m StmtReturn
 mkStmtReturn rValue span = do
   funcDecl <- fcGet
   let retType = DataType [] (funcRetType funcDecl)
   rValueType <- rValueDataType rValue
   unless (retType == rValueType)
-    $ throwError --
+    $ gThrowError --
     $ errTypeMismatch retType (funcDeclSpan funcDecl) rValueType span
   return $ MkStmtReturn rValue
 
 doFuncDeclare
-  :: (MonadError Error m, WriteFuncs m)
+  :: GrammarM m
   => PrimitiveType
   -> String
   -> [SpanW PrimitiveType]
@@ -324,12 +375,12 @@ doFuncDeclare retType funcName argTypes span = do
   throwFuncRedeclared func = case func of
     Nothing -> return ()
     Just (FuncDeclared funcDec) ->
-      throwError $ errFuncRedeclared span (funcDeclSpan funcDec)
+      gThrowError $ errFuncRedeclared span (funcDeclSpan funcDec)
     Just (FuncDefined funcDec _) ->
-      throwError $ errFuncRedeclared span (funcDeclSpan (funcDec))
+      gThrowError $ errFuncRedeclared span (funcDeclSpan (funcDec))
 
 doFuncDefine
-  :: (MonadError Error m, WriteFuncs m, WriteSymbols m, FunctionContext m)
+  :: GrammarM m
   => PrimitiveType
   -> String
   -> [SpanW (String, PrimitiveType)]
@@ -361,7 +412,7 @@ doFuncDefine retType name args span = do
   throwRedefined maybeFunc = case maybeFunc of
     Nothing -> return Nothing
     Just (FuncDefined _ func') ->
-      throwError $ errFuncRedefined span (funcDefSpan func')
+      gThrowError $ errFuncRedefined span (funcDefSpan func')
     Just (FuncDeclared func') -> do
       return $ Just func'
   throwMismatch retType name args maybeFuncDec = case maybeFuncDec of
@@ -375,7 +426,7 @@ doFuncDefine retType name args span = do
               == (snd . spanWVal <$> args)
             ]
           )
-        $ throwError
+        $ gThrowError
         $ errFuncDefMismatch span (funcDeclSpan funcDecl)
       return $ Just funcDecl
   declareIfNotDeclared maybeFunc = case maybeFunc of
@@ -385,43 +436,29 @@ doFuncDefine retType name args span = do
       return $ funcDecl . fromJust $ func
     Just f -> return f
 
-mkLValue
-  :: ( FunctionContext m
-     , ReadSymbols m
-     , FunctionContext m
-     , MonadError Error m
-     , ReadFuncs m
-     )
-  => SpanW String
-  -> [SpanW RValue]
-  -> m LValue
+mkLValue :: GrammarM m => SpanW String -> [SpanW RValue] -> m LValue
 mkLValue (SpanW identName identSpan) indices = do
   sym <- symLookupCombined identName >>= \case
-    Nothing  -> throwError $ errIdentifierNotDeclared identName identSpan
+    Nothing  -> gThrowError $ errIdentifierNotDeclared identName identSpan
     Just sym -> return sym
   let DataType dims _ = symDataType sym
   unless (length indices <= length dims)
-    $ throwError (Error.customError "Too much indices" identSpan) -- TODO Better error
+    $ gThrowError (Error.customError "Too much indices" identSpan) -- TODO Better error
   indices' <- mapM
     (\(SpanW index indexSpan) -> do
       indexType <- rValueDataType index
-      unless (indexType == DataType [] TypeInt) $ throwError
+      unless (indexType == DataType [] TypeInt) $ gThrowError
         (Error.customError "mkArrayIndex: index not int" indexSpan) -- TODO Better error
       return $ index
     )
     indices
   return $ LValue indices' identName
 
-mkExpFuncCall
-  :: (ReadFuncs m, ReadSymbols m, FunctionContext m, MonadError Error m)
-  => String
-  -> [SpanW RValue]
-  -> Span
-  -> m RValue
+mkExpFuncCall :: GrammarM m => String -> [SpanW RValue] -> Span -> m RValue
 mkExpFuncCall funcName args span = do
   func <- funcLookup funcName >>= throwFuncNotDeclared
   unless (length args == (length $ funcArgTypes . funcDecl $ func))
-    $ throwError
+    $ gThrowError
     $ errFuncArgLengthMismatch
         (length $ funcArgTypes . funcDecl $ func)
         (length args)
@@ -434,13 +471,13 @@ mkExpFuncCall funcName args span = do
             argType <- rValueDataType arg
             let (DataType dims argPrimType) = argType
             unless (length dims == 0)
-              $ throwError --
+              $ gThrowError --
               $ errTypeNotAllowed
                   [DataType [] TypeInt, DataType [] TypeString]
                   argType
                   argSpan
             unless (argPrimType == expectedType)
-              $ throwError
+              $ gThrowError
               $ errTypeMismatch
                   argType
                   argSpan
@@ -452,77 +489,70 @@ mkExpFuncCall funcName args span = do
   return $ RFuncCall funcName args'
  where
   throwFuncNotDeclared sym = case sym of
-    Nothing  -> throwError $ errFuncNotDeclared funcName span
+    Nothing  -> gThrowError $ errFuncNotDeclared funcName span
     Just sym -> return sym
 
 mkExpArithmetic
-  :: (ReadSymbols m, FunctionContext m, ReadFuncs m, MonadError Error m)
-  => SpanW RValue
-  -> OpArithmetic
-  -> SpanW RValue
-  -> m Exp
+  :: GrammarM m => SpanW RValue -> OpArithmetic -> SpanW RValue -> m Exp
 mkExpArithmetic (SpanW r1 span1) op (SpanW r2 span2) = do
   dataType1 <- rValueDataType r1
-  unless (dataType1 == DataType [] TypeInt) $ throwError
+  unless (dataType1 == DataType [] TypeInt) $ gThrowError
     (errTypeNotAllowed [DataType [] TypeInt] dataType1 span1)
   dataType2 <- rValueDataType r2
-  unless (dataType2 == DataType [] TypeInt) $ throwError
+  unless (dataType2 == DataType [] TypeInt) $ gThrowError
     (errTypeNotAllowed [DataType [] TypeInt] dataType2 span2)
   return $ MkExpArithmetic r1 op r2
 
 mkExpRelational
-  :: (ReadSymbols m, FunctionContext m, ReadFuncs m, MonadError Error m)
-  => SpanW RValue
-  -> OpRelational
-  -> SpanW RValue
-  -> m Exp
+  :: GrammarM m => SpanW RValue -> OpRelational -> SpanW RValue -> m Exp
 mkExpRelational (SpanW r1 span1) op (SpanW r2 span2) = do
   let allowedTypes = [DataType [] TypeInt, DataType [] TypeString]
 
   dataType1 <- rValueDataType r1
   unless (dataType1 `elem` allowedTypes)
-    $ throwError --
+    $ gThrowError --
     $ errTypeNotAllowed allowedTypes dataType1 span1
 
   dataType2 <- rValueDataType r2
   unless (dataType2 `elem` allowedTypes)
-    $ throwError --
+    $ gThrowError --
     $ errTypeNotAllowed allowedTypes dataType2 span2
 
   unless (dataType1 == dataType2)
-    $ throwError --
+    $ gThrowError --
     $ errTypeMismatch dataType1 span1 dataType2 span2
 
   return $ MkExpRelational r1 op r2
 mkExpLogical
-  :: (ReadSymbols m, FunctionContext m, ReadFuncs m, MonadError Error m)
-  => SpanW RValue
-  -> OpLogical
-  -> SpanW RValue
-  -> m Exp
+  :: GrammarM m => SpanW RValue -> OpLogical -> SpanW RValue -> m Exp
 mkExpLogical (SpanW r1 span1) op (SpanW r2 span2) = do
   let allowedTypes = [DataType [] TypeBool]
 
   dataType1 <- rValueDataType r1
   unless (dataType1 `elem` allowedTypes)
-    $ throwError --
+    $ gThrowError --
     $ errTypeNotAllowed allowedTypes dataType1 span1
 
   dataType2 <- rValueDataType r2
   unless (dataType2 `elem` allowedTypes)
-    $ throwError --
+    $ gThrowError --
     $ errTypeNotAllowed allowedTypes dataType2 span2
 
   unless (dataType1 == dataType2)
-    $ throwError --
+    $ gThrowError --
     $ errTypeMismatch dataType1 span1 dataType2 span2
 
   return $ MkExpLogical r1 op r2
 
+
+doTypeDeclare :: GrammarM m => String -> [(DataType, String, Span)] -> m ()
+doTypeDeclare = do
+  error "Not implemented"
+
+
 -- Helper Functions
 
-symLookupCombined
-  :: (ReadSymbols m, FunctionContext m) => String -> m (Maybe Symbol)
+symLookupCombined :: GrammarM m => String -> m (Maybe Symbol)
 symLookupCombined name = do
   fcHasCtxt <- fcHasCtxt
   lSym      <- if fcHasCtxt then fcSymLookup name else return $ Nothing
@@ -530,10 +560,7 @@ symLookupCombined name = do
     Just sym -> return $ Just sym
     Nothing  -> gSymLookup name
 
-lValueDataType
-  :: (FunctionContext m, ReadSymbols m, FunctionContext m)
-  => LValue
-  -> m DataType
+lValueDataType :: GrammarM m => LValue -> m DataType
 lValueDataType (LValue indices identName) = do
   (DataType dims primType) <-
     symDataType . fromJust <$> symLookupCombined identName
@@ -541,14 +568,11 @@ lValueDataType (LValue indices identName) = do
   let dims' = drop (length indices) dims
   return $ DataType dims' primType
 
-lValueDeclSpan :: (FunctionContext f, ReadSymbols f) => LValue -> f Span
+lValueDeclSpan :: GrammarM m => LValue -> m Span
 lValueDeclSpan (LValue _ identName) = do
   symDeclSpan . fromJust <$> symLookupCombined identName
 
-rValueDataType
-  :: (FunctionContext m, ReadSymbols m, FunctionContext m, ReadFuncs m)
-  => RValue
-  -> m DataType
+rValueDataType :: GrammarM m => RValue -> m DataType
 rValueDataType (RLValue v  ) = lValueDataType v
 rValueDataType (RExp    exp) = return $ expDataType exp
 rValueDataType (RFuncCall funcName _) =
@@ -573,35 +597,6 @@ instance Show DataType where
   show (DataType dims primType) =
     let s = show primType
     in s ++ concatMap (\n -> "[" ++ show n ++ "]") dims
-
--- Typeclasses
-
-class Monad m => ReadSymbols m where
-  gSymLookup :: String -> m (Maybe Symbol)
-
-class Monad m => WriteSymbols m where
-  gSymInsert :: Symbol -> m ()
-
-class Monad m => FunctionContext m where
-  fcEnter :: FuncDecl -> m ()
-  fcHasCtxt :: m Bool
-  fcGet :: m FuncDecl
-  fcSymInsert :: Symbol -> m ()
-  fcSymLookup :: String -> m (Maybe Symbol)
-  fcExit :: m [Symbol]
-
-class Monad m => ReadFuncs m where
-  funcLookup :: String -> m (Maybe Func)
-
-class ReadFuncs m => WriteFuncs m where
-  funcInsert :: Func -> m ()
-
-class Monad m => ReadLoopStack m where
-  hasLoop :: m Bool
-
-class Monad m => LoopStackWriter m where
-  pushLoop :: m ()
-  popLoop :: m ()
 
 -- Errors
 
