@@ -16,20 +16,12 @@ import qualified Error
 import Span
 import Data.Bifunctor (second)
 
---
-
+-- Monad
 
 class Monad m => GrammarM m where
   gsGet :: m GrammarState
   gsPut :: GrammarState -> m ()
   gThrowError :: Error -> m a
-
-
-gsGets :: GrammarM m => (GrammarState -> a) -> m a
-gsGets f = f <$> gsGet
-
-gsModify :: GrammarM m => (GrammarState -> GrammarState) -> m ()
-gsModify f = (f <$> gsGet) >>= gsPut
 
 data GrammarState =
   GrammarState
@@ -39,6 +31,7 @@ data GrammarState =
     , gsLoopStack :: Int
     }
 
+gsInit :: GrammarState
 gsInit = GrammarState
   { gsGSymbols    = []
   , gsFuncs       = []
@@ -46,63 +39,7 @@ gsInit = GrammarState
   , gsLoopStack   = 0
   }
 
-insertList key a list = case list of
-  [] -> [a]
-  (a' : as') ->
-    (if key a == key a' then a : as' else a' : insertList key a as')
-
-gSymLookup name = gsGets $ (find $ \s -> symName s == name) . gsGSymbols
-gSymInsert symbol = gsModify
-  $ \gs -> gs { gsGSymbols = insertList symName symbol (gsGSymbols gs) }
-
-funcLookup name =
-  gsGets $ (find $ \s -> (funcName . funcDecl $ s) == name) . gsFuncs
-
-funcInsert func = gsModify $ \gs ->
-  gs { gsFuncs = insertList (funcName . funcDecl) func (gsFuncs gs) }
-
-hasLoop :: GrammarM m => m Bool
-hasLoop = gsGets (\gs -> gsLoopStack gs > 0)
-
-pushLoop :: GrammarM m => m ()
-pushLoop = gsModify (\gs -> gs { gsLoopStack = gsLoopStack gs + 1 })
-
-popLoop :: GrammarM m => m ()
-popLoop =
-  gsModify (\gs -> gs { gsLoopStack = max 0 (gsLoopStack gs - 1) })
-
-fcEnter :: GrammarM m => FuncDecl -> m ()
-fcEnter funcDecl =
-  gsModify $ \s -> s { gsFuncContext = Just (funcDecl, []) }
-
-fcExit :: GrammarM m => m [Symbol]
-fcExit = do
-  (_, syms) <- gsGets (fromJust . gsFuncContext)
-  gsModify $ \s -> s { gsFuncContext = Nothing }
-  return syms
-
-fcGet :: GrammarM m => m FuncDecl
-fcGet = gsGets (fst . fromJust . gsFuncContext)
-
-fcSymLookup :: GrammarM m => String -> m (Maybe Symbol)
-fcSymLookup name =
-  gsGets
-    $ (find $ \s -> symName s == name)
-    . snd
-    . fromJust
-    . gsFuncContext
-
-fcSymInsert :: GrammarM m => Symbol -> m ()
-fcSymInsert symbol = gsModify $ \gs -> gs
-  { gsFuncContext = fmap
-    (second $ insertList symName symbol)
-    (gsFuncContext gs)
-  }
-
-fcHasCtxt :: GrammarM m => m Bool
-fcHasCtxt = gsGets (isJust . gsFuncContext)
-
---
+-- AST
 
 data Stmt
   = StmtAssign StmtAssign
@@ -598,6 +535,79 @@ instance Show DataType where
     let s = show primType
     in s ++ concatMap (\n -> "[" ++ show n ++ "]") dims
 
+
+-- Monad
+
+-- Utilities
+
+gsGets :: GrammarM m => (GrammarState -> a) -> m a
+gsGets f = f <$> gsGet
+
+gsModify :: GrammarM m => (GrammarState -> GrammarState) -> m ()
+gsModify f = (f <$> gsGet) >>= gsPut
+
+insertList :: Eq a => (t -> a) -> t -> [t] -> [t]
+insertList key a list = case list of
+  [] -> [a]
+  (a' : as') ->
+    (if key a == key a' then a : as' else a' : insertList key a as')
+
+gSymLookup :: GrammarM m => String -> m (Maybe Symbol)
+gSymLookup name = gsGets $ (find $ \s -> symName s == name) . gsGSymbols
+
+gSymInsert :: GrammarM m => Symbol -> m ()
+gSymInsert symbol = gsModify
+  $ \gs -> gs { gsGSymbols = insertList symName symbol (gsGSymbols gs) }
+
+funcLookup :: GrammarM m => String -> m (Maybe Func)
+funcLookup name =
+  gsGets $ (find $ \s -> (funcName . funcDecl $ s) == name) . gsFuncs
+
+funcInsert :: GrammarM m => Func -> m ()
+funcInsert func = gsModify $ \gs ->
+  gs { gsFuncs = insertList (funcName . funcDecl) func (gsFuncs gs) }
+
+hasLoop :: GrammarM m => m Bool
+hasLoop = gsGets (\gs -> gsLoopStack gs > 0)
+
+pushLoop :: GrammarM m => m ()
+pushLoop = gsModify (\gs -> gs { gsLoopStack = gsLoopStack gs + 1 })
+
+popLoop :: GrammarM m => m ()
+popLoop =
+  gsModify (\gs -> gs { gsLoopStack = max 0 (gsLoopStack gs - 1) })
+
+fcEnter :: GrammarM m => FuncDecl -> m ()
+fcEnter funcDecl =
+  gsModify $ \s -> s { gsFuncContext = Just (funcDecl, []) }
+
+fcExit :: GrammarM m => m [Symbol]
+fcExit = do
+  (_, syms) <- gsGets (fromJust . gsFuncContext)
+  gsModify $ \s -> s { gsFuncContext = Nothing }
+  return syms
+
+fcGet :: GrammarM m => m FuncDecl
+fcGet = gsGets (fst . fromJust . gsFuncContext)
+
+fcSymLookup :: GrammarM m => String -> m (Maybe Symbol)
+fcSymLookup name =
+  gsGets
+    $ (find $ \s -> symName s == name)
+    . snd
+    . fromJust
+    . gsFuncContext
+
+fcSymInsert :: GrammarM m => Symbol -> m ()
+fcSymInsert symbol = gsModify $ \gs -> gs
+  { gsFuncContext = fmap
+    (second $ insertList symName symbol)
+    (gsFuncContext gs)
+  }
+
+fcHasCtxt :: GrammarM m => m Bool
+fcHasCtxt = gsGets (isJust . gsFuncContext)
+
 -- Errors
 
 errIdentifierNotDeclared :: String -> Span -> Error
@@ -666,3 +676,4 @@ errArrayNotAllowed span declSpan =
   [ ("An array is not allowed in this position", span)
   , ("Was declared here"                       , declSpan)
   ]
+
