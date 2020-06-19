@@ -62,7 +62,7 @@ funcInsert func = gsModify $ \gs ->
   gs { gsFuncs = insertList (funcName . funcDecl) func (gsFuncs gs) }
 
 hasLoop :: GrammarM m => m Bool
-hasLoop = gsGets (\gs -> gsLoopStack gs >= 0)
+hasLoop = gsGets (\gs -> gsLoopStack gs > 0)
 
 pushLoop :: GrammarM m => m ()
 pushLoop = gsModify (\gs -> gs { gsLoopStack = gsLoopStack gs + 1 })

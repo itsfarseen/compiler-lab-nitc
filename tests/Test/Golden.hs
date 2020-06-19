@@ -8,10 +8,10 @@ import System.Directory
 import System.FilePath
 import qualified Parser
 import qualified Frontend
+import qualified Grammar
 import qualified Backend.Simulator as Simulator
 import qualified Backend.Codegen as Codegen
 import Control.Monad.Except
-import Control.Monad.State.Strict
 import Error (Error, panicError)
 import Data.ByteString.Lazy.UTF8 (fromString)
 
@@ -41,11 +41,11 @@ runGoldenTest explFile stdinFile = do
   stdin <- lines <$> readFile stdinFile
   (funcs, symbols) <- handleError expl explFile $ do
     liftEither $ Frontend.runFrontend
-      (Frontend.initData expl)
+      (Frontend.initData expl Grammar.gsInit)
       do
         Parser.parse
-        symbols <- gets Frontend.gSymbols
-        funcs   <- gets Frontend.funcs
+        symbols <- Grammar.gsGets Grammar.gsGSymbols
+        funcs   <- Grammar.gsGets Grammar.gsFuncs
         return (funcs, symbols)
   code <- handleError expl explFile $ do
     liftEither $ Codegen.runCodegen

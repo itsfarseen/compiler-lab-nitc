@@ -9,15 +9,22 @@ import Test.Tasty.HUnit
 import Frontend (Frontend)
 import qualified Frontend
 import Error (Error)
+import Control.Monad.State.Strict (gets)
 
 gRun :: Frontend a -> Either Error a
-gRun = Frontend.runFrontend (Frontend.initData "")
+gRun = Frontend.runFrontend (Frontend.initData "" Grammar.gsInit)
 
 gAssertError :: Frontend a -> IO ()
 gAssertError = assertError . gRun
 
 gAssertRight :: Frontend a -> IO ()
-gAssertRight x = assertRight $ gRun x >> return ()
+gAssertRight x = gExtractRight x >> return ()
+
+gExtractRight :: Frontend a -> IO a
+gExtractRight x = assertRight $ gRun x
+
+span0 :: Span
+span0 = Span 0 0
 
 -- Update list of tests - Run the following line as vim macro - 0w"qy$@q -
 -- mq:let @b="" | g/\<test_\i\+\> ::/exe 'norm "ByE'|let @B=", "'q4j$di["bphxx
@@ -44,9 +51,20 @@ tests = testGroup
 test_varDeclare :: TestTree
 test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
   step "Declare var"
-  gAssertRight $ do
+  syms <- gExtractRight $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     mkLValue (spanW "foo") (spanW . RExp . ExpNum <$> [1, 2])
+    Grammar.gsGets Grammar.gsGSymbols
+  syms @?= [Symbol {symName = "foo", symDataType = DataType [5, 10] TypeInt, symDeclSpan = span0}]
+
+  step "Declare var inside function"
+  syms <- gExtractRight $ do
+    doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
+    define <- doFuncDefine TypeInt "fn" [] span0
+    mkLValue (spanW "foo") (spanW . RExp . ExpNum <$> [1, 2])
+    Grammar.gsGets Grammar.gsGSymbols
+  syms @?= [Symbol {symName = "foo", symDataType = DataType [5, 10] TypeInt, symDeclSpan = span0}]
+
 
   step "Redeclare var"
   gAssertError $ do
