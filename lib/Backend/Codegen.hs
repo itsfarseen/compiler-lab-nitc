@@ -10,16 +10,15 @@ module Backend.Codegen where
 
 import Backend.Instructions
 import Backend.Reg
-import Data.List (sortOn)
-import qualified Grammar as G
-import Grammar hiding (Symbol(..), Func(..), FuncDecl(..), FuncDef(..))
-import qualified Data.HashMap.Strict as HM
+import Control.Monad.Except
 import Control.Monad.State.Strict
+import Data.List (find)
+import Data.List (sortOn)
+import Data.Maybe (fromJust)
 import Error
 import Span
-import Control.Monad.Except
-import Data.List (find)
-import Data.Maybe (fromJust)
+import qualified Data.HashMap.Strict as HM
+import qualified Grammar as G
 
 
 -- import Debug.Trace
@@ -52,8 +51,8 @@ data Symbol =
 
 data Func = Func {
     funcName :: String
-  , funcRetType :: PrimitiveType
-  , funcBody :: [Stmt]
+  , funcRetType :: G.PrimitiveType
+  , funcBody :: [G.Stmt]
   , funcSymbols :: [Symbol]
   , funcLocalVarsSize :: Int
   , funcLabel :: String
@@ -63,7 +62,7 @@ runCodegen :: Codegen a -> CodegenState -> Either Error a
 runCodegen compiler state = evalStateT compiler state
 
 
-initCodegenState :: [G.Symbol] -> [G.Func] -> CodegenState
+initCodegenState :: [G.Symbol] -> [G.FuncDef] -> CodegenState
 initCodegenState symbols funcs = initCodegenStateInternal
   gSymbols
   gSymbolsSize
@@ -102,28 +101,26 @@ buildSymbolTable symbols locBase =
       ( Symbol { symName, symDataType, symRelLoc = loc }
       , loc + (dataTypeSize symDataType)
       )
-  dataTypeSize (DataType dims _) = product dims
+  dataTypeSize (G.DataType dims _) = product dims
 
-buildFuncsTable :: [G.Func] -> Int -> [Func]
+buildFuncsTable :: [G.FuncDef] -> Int -> [Func]
 buildFuncsTable funcs i = case funcs of
   []           -> []
   (f : funcs') -> (toFunc f) : (buildFuncsTable funcs' (i + 1))
  where
   toFunc f = case f of
-    G.FuncDeclared G.FuncDecl { funcName } ->
-      error $ "Function declared, but not defined: " ++ funcName
-    G.FuncDefined G.FuncDecl { funcName, funcRetType } G.FuncDef { funcBody, funcArgsLen, funcSyms }
+    G.FuncDef {fDefName, fDefRetType, fDefBody, fDefArgsLen, fDefSyms }
       -> let
-           (args, localVars)     = splitAt funcArgsLen funcSyms
+           (args, localVars)     = splitAt fDefArgsLen fDefSyms
            args'                 = buildFuncArgsTable args (-3)
            (localVars', locNext) = buildSymbolTable localVars 1
          in Func
-           { funcName
-           , funcRetType
-           , funcBody
+           { funcName = fDefName
+           , funcRetType = fDefRetType
+           , funcBody = fDefBody
            , funcSymbols       = args' ++ localVars'
            , funcLocalVarsSize = locNext - 1
-           , funcLabel         = funcName
+           , funcLabel         = fDefName
            }
 
 buildFuncArgsTable :: [G.Symbol] -> Int -> [Symbol]
@@ -234,22 +231,22 @@ execFuncDef func = do
   modify (\s -> s { lSymbols = Nothing })
   popRegStack
 
-execStmt :: Stmt -> Codegen ()
+execStmt :: G.Stmt -> Codegen ()
 execStmt stmt = case stmt of
-  StmtAssign   stmt -> execStmtAssign stmt
-  StmtRead     stmt -> execStmtRead stmt
-  StmtWrite    stmt -> execStmtWrite stmt
-  StmtIf       stmt -> execStmtIf stmt
-  StmtIfElse   stmt -> execStmtIfElse stmt
-  StmtWhile    stmt -> execStmtWhile stmt
-  StmtBreak    stmt -> execStmtBreak stmt
-  StmtContinue stmt -> execStmtContinue stmt
-  StmtReturn   stmt -> execStmtReturn stmt
-  StmtRValue   stmt -> execStmtRValue stmt
+  G.StmtAssign   stmt -> execStmtAssign stmt
+  G.StmtRead     stmt -> execStmtRead stmt
+  G.StmtWrite    stmt -> execStmtWrite stmt
+  G.StmtIf       stmt -> execStmtIf stmt
+  G.StmtIfElse   stmt -> execStmtIfElse stmt
+  G.StmtWhile    stmt -> execStmtWhile stmt
+  G.StmtBreak    stmt -> execStmtBreak stmt
+  G.StmtContinue stmt -> execStmtContinue stmt
+  G.StmtReturn   stmt -> execStmtReturn stmt
+  G.StmtRValue   stmt -> execStmtRValue stmt
 
-execStmtAssign :: StmtAssign -> Codegen ()
+execStmtAssign :: G.StmtAssign -> Codegen ()
 execStmtAssign stmt = do
-  let (MkStmtAssign lhs rhs) = stmt
+  let (G.MkStmtAssign lhs rhs) = stmt
   rhsReg    <- getRValueInReg rhs
   lhsLocReg <- getLValueLocInReg lhs
   appendCode [XSM_MOV_IndDst lhsLocReg rhsReg]
@@ -257,12 +254,12 @@ execStmtAssign stmt = do
   releaseReg rhsReg
   return ()
 
-execStmtRead :: StmtRead -> Codegen ()
+execStmtRead :: G.StmtRead -> Codegen ()
 execStmtRead stmt = do
   usedRegs <- getUsedRegs
   backupRegs usedRegs
   pushRegStack
-  let MkStmtRead lValue = stmt
+  let G.MkStmtRead lValue = stmt
   lValueLocReg <- getLValueLocInReg lValue
   t1           <- getFreeReg
   let
@@ -287,12 +284,12 @@ execStmtRead stmt = do
   restoreRegs usedRegs
   popRegStack
 
-execStmtWrite :: StmtWrite -> Codegen ()
+execStmtWrite :: G.StmtWrite -> Codegen ()
 execStmtWrite stmt = do
   usedRegs <- getUsedRegs
   backupRegs usedRegs
   pushRegStack
-  let MkStmtWrite rValue = stmt
+  let G.MkStmtWrite rValue = stmt
   reg <- getRValueInReg rValue
   t1 <- getFreeReg
   let
@@ -317,9 +314,9 @@ execStmtWrite stmt = do
   restoreRegs usedRegs
   popRegStack
 
-execStmtIf :: StmtIf -> Codegen ()
+execStmtIf :: G.StmtIf -> Codegen ()
 execStmtIf stmt = do
-  let MkStmtIf condition stmts = stmt
+  let G.MkStmtIf condition stmts = stmt
   condReg  <- getRValueInReg condition
   endLabel <- getNewLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JZ condReg endLabel]
@@ -327,9 +324,9 @@ execStmtIf stmt = do
   installLabel endLabel
   releaseReg condReg
 
-execStmtIfElse :: StmtIfElse -> Codegen ()
+execStmtIfElse :: G.StmtIfElse -> Codegen ()
 execStmtIfElse stmt = do
-  let MkStmtIfElse condition stmtsThen stmtsElse = stmt
+  let G.MkStmtIfElse condition stmtsThen stmtsElse = stmt
   condReg   <- getRValueInReg condition
   elseLabel <- getNewLabel
   endLabel  <- getNewLabel
@@ -354,9 +351,9 @@ loopBody body = do
   _ <- popLoopBreakLabel
   return ()
 
-execStmtWhile :: StmtWhile -> Codegen ()
+execStmtWhile :: G.StmtWhile -> Codegen ()
 execStmtWhile stmt = do
-  let MkStmtWhile condition stmts = stmt
+  let G.MkStmtWhile condition stmts = stmt
   loopBody $ \startLabel endLabel -> do
     r <- getRValueInReg condition
     appendCode [XSM_UTJ $ XSM_UTJ_JZ r endLabel]
@@ -364,19 +361,19 @@ execStmtWhile stmt = do
     mapM_ execStmt stmts
     appendCode [XSM_UTJ $ XSM_UTJ_JMP startLabel]
 
-execStmtBreak :: StmtBreak -> Codegen ()
+execStmtBreak :: G.StmtBreak -> Codegen ()
 execStmtBreak _ = do
   endLabel <- peekLoopBreakLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JMP endLabel]
 
-execStmtContinue :: StmtContinue -> Codegen ()
+execStmtContinue :: G.StmtContinue -> Codegen ()
 execStmtContinue _ = do
   endLabel <- peekLoopContinueLabel
   appendCode [XSM_UTJ $ XSM_UTJ_JMP endLabel]
 
-execStmtReturn :: StmtReturn -> Codegen ()
+execStmtReturn :: G.StmtReturn -> Codegen ()
 execStmtReturn stmt = do
-  let (MkStmtReturn rValue) = stmt
+  let (G.MkStmtReturn rValue) = stmt
   r1 <- getRValueInReg rValue
   t  <- getFreeReg
   appendCode [XSM_MOV_R t BP]
@@ -388,20 +385,20 @@ execStmtReturn stmt = do
   appendCode [XSM_POP BP]
   appendCode [XSM_RET]
 
-execStmtRValue :: StmtRValue -> Codegen ()
+execStmtRValue :: G.StmtRValue -> Codegen ()
 execStmtRValue stmt = do
-  let (MkStmtRValue rValue) = stmt
+  let (G.MkStmtRValue rValue) = stmt
   r1 <- getRValueInReg rValue
   releaseReg r1
 
-getLValueLocInReg :: LValue -> Codegen Reg
+getLValueLocInReg :: G.LValue -> Codegen Reg
 getLValueLocInReg lValue = do
-  let (LValue indices ident) = lValue
-  (DataType dims _) <- getSymbolDataType ident
+  let (G.LValue indices ident) = lValue
+  (G.DataType dims _) <- getSymbolDataType ident
   (reg, _)          <- getLValueLocInReg' dims indices ident
   return reg
  where
-  getLValueLocInReg' :: [Int] -> [RValue] -> String -> Codegen (Reg, Int)
+  getLValueLocInReg' :: [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
   getLValueLocInReg' dims indices symName = case (dims, indices) of
     ([], []) -> do
       reg <- getSymbolLocInReg symName
@@ -426,25 +423,25 @@ restoreRegs :: [Reg] -> Codegen ()
 restoreRegs regs =
     mapM_ (\reg -> appendCode [XSM_POP reg]) regs
 
-getRValueInReg :: RValue -> Codegen Reg
+getRValueInReg :: G.RValue -> Codegen Reg
 getRValueInReg rValue = case rValue of
-  RExp (ExpNum i) -> do
+  G.RExp (G.ExpNum i) -> do
     reg <- getFreeReg
     appendCode [XSM_MOV_Int reg i]
     return reg
-  RExp (ExpStr s) -> do
+  G.RExp (G.ExpStr s) -> do
     reg <- getFreeReg
     appendCode [XSM_MOV_Str reg s]
     return reg
-  RExp (MkExpArithmetic e1 op e2) -> execALUInstr (arithOpInstr op) e1 e2
-  RExp (MkExpRelational e1 op e2) ->
+  G.RExp (G.MkExpArithmetic e1 op e2) -> execALUInstr (arithOpInstr op) e1 e2
+  G.RExp (G.MkExpRelational e1 op e2) ->
     execALUInstr (relationalOpInstr op) e1 e2
-  RExp    (MkExpLogical e1 op e2) -> execALUInstr (logicalOpInstr op) e1 e2
-  RLValue lValue                  -> do
+  G.RExp    (G.MkExpLogical e1 op e2) -> execALUInstr (logicalOpInstr op) e1 e2
+  G.RLValue lValue                  -> do
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
-  RFuncCall fname args -> do
+  G.RFuncCall fname args -> do
     usedRegs <- getUsedRegs
     backupRegs usedRegs
     label <- getFuncLabel fname
@@ -474,7 +471,7 @@ getFuncLabel name =
 
 type ALUInstr = (Reg -> Reg -> XSMInstr)
 
-execALUInstr :: ALUInstr -> RValue -> RValue -> Codegen Reg
+execALUInstr :: ALUInstr -> G.RValue -> G.RValue -> Codegen Reg
 execALUInstr instr e1 e2 = do
   r1 <- getRValueInReg e1
   r2 <- getRValueInReg e2
@@ -482,29 +479,29 @@ execALUInstr instr e1 e2 = do
   releaseReg r2
   return r1
 
-arithOpInstr :: OpArithmetic -> ALUInstr
+arithOpInstr :: G.OpArithmetic -> ALUInstr
 arithOpInstr op = case op of
-  OpAdd -> XSM_ADD
-  OpSub -> XSM_SUB
-  OpMul -> XSM_MUL
-  OpDiv -> XSM_DIV
-  OpMod -> XSM_MOD
+  G.OpAdd -> XSM_ADD
+  G.OpSub -> XSM_SUB
+  G.OpMul -> XSM_MUL
+  G.OpDiv -> XSM_DIV
+  G.OpMod -> XSM_MOD
 
-relationalOpInstr :: OpRelational -> ALUInstr
+relationalOpInstr :: G.OpRelational -> ALUInstr
 relationalOpInstr op = case op of
-  OpLT -> XSM_LT
-  OpGT -> XSM_GT
-  OpLE -> XSM_LE
-  OpGE -> XSM_GE
-  OpNE -> XSM_NE
-  OpEQ -> XSM_EQ
+  G.OpLT -> XSM_LT
+  G.OpGT -> XSM_GT
+  G.OpLE -> XSM_LE
+  G.OpGE -> XSM_GE
+  G.OpNE -> XSM_NE
+  G.OpEQ -> XSM_EQ
 
 
 
-logicalOpInstr :: OpLogical -> ALUInstr
+logicalOpInstr :: G.OpLogical -> ALUInstr
 logicalOpInstr op = case op of
-  OpLAnd -> XSM_MUL
-  OpLOr  -> XSM_ADD
+  G.OpLAnd -> XSM_MUL
+  G.OpLOr  -> XSM_ADD
 
 
 --
@@ -519,7 +516,7 @@ getSymbol name = do
     (Nothing    , Just symbol) -> return symbol
     (Nothing    , Nothing    ) -> error $ "Symbol not found:" ++ name
 
-getSymbolDataType :: String -> Codegen DataType
+getSymbolDataType :: String -> Codegen G.DataType
 getSymbolDataType name = symDataType <$> getSymbol name
 
 {-

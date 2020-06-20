@@ -1,5 +1,6 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE BlockArguments #-}
+{-# LANGUAGE NamedFieldPuns #-}
 module Test.Golden where
 
 import Test.Tasty
@@ -8,7 +9,7 @@ import System.Directory
 import System.FilePath
 import qualified Parser
 import qualified Frontend
-import qualified Grammar
+import qualified Grammar as G
 import qualified Backend.Simulator as Simulator
 import qualified Backend.Codegen as Codegen
 import Control.Monad.Except
@@ -41,12 +42,15 @@ runGoldenTest explFile stdinFile = do
   stdin <- lines <$> readFile stdinFile
   (funcs, symbols) <- handleError expl explFile $ do
     liftEither $ Frontend.runFrontend
-      (Frontend.initData expl Grammar.gsInit)
+      (Frontend.initData expl G.gsInit)
       do
         Parser.parse
-        symbols <- Grammar.gsGets Grammar.gsGSymbols
-        funcs   <- Grammar.gsGets Grammar.gsFuncs
-        return (funcs, symbols)
+        symbols <- G.gsGets G.gsGSymbols
+        funcs   <- G.gsGets G.gsFuncs
+        let funcDefs = map (\func -> case func of 
+                                   G.FuncDefined fDef -> fDef
+                                   G.FuncDeclared G.FuncDecl{G.fDeclName} -> error $ "Function not defined" ++ fDeclName) funcs
+        return (funcDefs, symbols)
   code <- handleError expl explFile $ do
     liftEither $ Codegen.runCodegen
       (do

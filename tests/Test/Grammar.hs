@@ -1,33 +1,46 @@
-{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+
 module Test.Grammar where
 
+import Control.Monad.Except
+import Control.Monad.State.Strict
+import Error (Error)
 import Grammar
 import Span
-import Test.Utils
-import Test.Tasty (TestTree, testGroup)
 import Test.Tasty.HUnit
-import Frontend (Frontend)
-import qualified Frontend
-import Error (Error)
-import Control.Monad.State.Strict (gets)
+import Test.Tasty (TestTree, testGroup)
+import Test.Utils
 
-gRun :: Frontend a -> Either Error a
-gRun = Frontend.runFrontend (Frontend.initData "" Grammar.gsInit)
+newtype TestGrammarM a =
+  TestGrammarM (StateT GrammarState (Except Error) a)
+  deriving ( Functor
+           , Applicative
+           , Monad
+           , MonadState GrammarState
+           , MonadError Error
+           )
 
-gAssertError :: Frontend a -> IO ()
+instance GrammarM TestGrammarM where
+  gsGet       = get
+  gsPut       = put
+  gThrowError = throwError
+
+gRun :: TestGrammarM a -> Either Error (a, GrammarState)
+gRun (TestGrammarM stateT) = runExcept $ runStateT stateT Grammar.gsInit
+
+gGetRight :: TestGrammarM a -> IO (a, GrammarState)
+gGetRight = getRight . gRun
+
+gGetState :: TestGrammarM a -> IO GrammarState
+gGetState x = snd <$> gGetRight x
+
+gAssertRight :: TestGrammarM a -> IO ()
+gAssertRight x = gGetRight x >> return ()
+
+gAssertError :: TestGrammarM a -> IO ()
 gAssertError = assertError . gRun
 
-gAssertRight :: Frontend a -> IO ()
-gAssertRight x = gExtractRight x >> return ()
-
-gExtractRight :: Frontend a -> IO a
-gExtractRight x = assertRight $ gRun x
-
-span0 :: Span
-span0 = Span 0 0
-
--- Update list of tests - Run the following line as vim macro - 0w"qy$@q -
--- mq:let @b="" | g/\<test_\i\+\> ::/exe 'norm "ByE'|let @B=", "'q4j$di["bphxx
 tests :: TestTree
 tests = testGroup
   "Codegen"
@@ -51,20 +64,36 @@ tests = testGroup
 test_varDeclare :: TestTree
 test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
   step "Declare var"
-  syms <- gExtractRight $ do
+  state <- gGetState $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
-    mkLValue (spanW "foo") (spanW . RExp . ExpNum <$> [1, 2])
-    Grammar.gsGets Grammar.gsGSymbols
-  syms @?= [Symbol {symName = "foo", symDataType = DataType [5, 10] TypeInt, symDeclSpan = span0}]
+  state @?= Grammar.gsInit
+    { gsGSymbols =
+      [ Symbol
+          { symName     = "foo"
+          , symDataType = DataType [5, 10] TypeInt
+          , symDeclSpan = span0
+          }
+      ]
+    }
 
-  step "Declare var inside function"
-  syms <- gExtractRight $ do
+  step "Global var and function"
+  state <- gGetState $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
-    define <- doFuncDefine TypeInt "fn" [] span0
-    mkLValue (spanW "foo") (spanW . RExp . ExpNum <$> [1, 2])
-    Grammar.gsGets Grammar.gsGSymbols
-  syms @?= [Symbol {symName = "foo", symDataType = DataType [5, 10] TypeInt, symDeclSpan = span0}]
-
+    _define <- doFuncDefine TypeInt "fn" [] span0
+    _define []
+  gsGSymbols state
+    @?= [ Symbol
+            { symName     = "foo"
+            , symDataType = DataType [5, 10] TypeInt
+            , symDeclSpan = span0
+            }
+        ]
+  case gsFuncs state !! 0 of
+    FuncDefined FuncDef { fDefSyms } -> fDefSyms @?= []
+    _ ->
+      assertFailure
+        $  "unexpected value of gsFuncs"
+        ++ (show $ gsFuncs state)
 
   step "Redeclare var"
   gAssertError $ do
@@ -90,7 +119,6 @@ test_mkLValue = testCaseSteps "mkLValue" $ \step -> do
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [5, 5] (Span 0 0)
     mkLValue (spanW "foo") (spanW . RExp . ExpNum <$> [2, 2])
-  return ()
 
 test_stmtAssign :: TestTree
 test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
@@ -233,14 +261,22 @@ test_stmtContinue = testCaseSteps "StmtContinue" $ \step -> do
 test_funcDeclare :: TestTree
 test_funcDeclare = testCaseSteps "Func Declare" $ \step -> do
   step "Declare function"
-  gAssertRight $ do
+  state <- gGetState $ do
     doFuncDeclare
       TypeInt
       "foo"
-      (flip SpanW (Span 0 0) <$> [TypeInt, TypeInt, TypeInt])
+      (spanW <$> [TypeInt, TypeInt, TypeInt])
       (Span 0 0)
-
-  -- TODO: Check function is actually declared using RValue
+  state @?= Grammar.gsInit
+    { gsFuncs =
+      [ FuncDeclared $ FuncDecl
+          { fDeclName     = "foo"
+          , fDeclRetType  = TypeInt
+          , fDeclArgTypes = spanW <$> [TypeInt, TypeInt, TypeInt]
+          , fDeclSpan     = span0
+          }
+      ]
+    }
 
   step "Redeclare function"
   gAssertError $ do
@@ -320,8 +356,10 @@ test_mkExpArithmetic = testCaseSteps "Exp Arithmetic" $ \step -> do
 test_mkExpRelational :: TestTree
 test_mkExpRelational = testCaseSteps "Exp Relational" $ \step -> do
   step "Int Int"
-  gAssertRight
-    $ mkExpRelational (spanW (RExp $ ExpNum 1)) OpLT (spanW (RExp $ ExpNum 1))
+  gAssertRight $ mkExpRelational
+    (spanW (RExp $ ExpNum 1))
+    OpLT
+    (spanW (RExp $ ExpNum 1))
 
   step "Str Str"
   gAssertRight $ mkExpRelational
@@ -330,8 +368,10 @@ test_mkExpRelational = testCaseSteps "Exp Relational" $ \step -> do
     (spanW (RExp $ ExpStr "B"))
 
   step "Int Str"
-  gAssertError
-    $ mkExpRelational (spanW (RExp $ ExpNum 1)) OpLT (spanW (RExp $ ExpStr "B"))
+  gAssertError $ mkExpRelational
+    (spanW (RExp $ ExpNum 1))
+    OpLT
+    (spanW (RExp $ ExpStr "B"))
 
   return ()
 

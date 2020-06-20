@@ -1,9 +1,10 @@
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE ConstraintKinds          #-}
-{-# LANGUAGE DisambiguateRecordFields #-}
-{-# LANGUAGE DuplicateRecordFields    #-}
 {-# LANGUAGE FlexibleContexts         #-}
 {-# LANGUAGE LambdaCase               #-}
 {-# LANGUAGE PatternSynonyms          #-}
+{-# LANGUAGE NamedFieldPuns          #-}
+{-# LANGUAGE NamedFieldPuns          #-}
 
 module Grammar where
 
@@ -30,6 +31,7 @@ data GrammarState =
     , gsFuncContext :: Maybe (FuncDecl, [Symbol])
     , gsLoopStack :: Int
     }
+    deriving (Show, Eq)
 
 gsInit :: GrammarState
 gsInit = GrammarState
@@ -146,26 +148,30 @@ data Symbol =
 
 data Func
   = FuncDeclared FuncDecl
-  | FuncDefined FuncDecl FuncDef
-
-funcDecl :: Func -> FuncDecl
-funcDecl (FuncDeclared x ) = x
-funcDecl (FuncDefined x _) = x
-
-data FuncDecl
-  = FuncDecl { funcName     :: String
-             , funcRetType  :: PrimitiveType
-             , funcArgTypes :: [SpanW PrimitiveType]
-             , funcDeclSpan :: Span
-             }
+  | FuncDefined FuncDef
   deriving (Show, Eq)
 
-data FuncDef
-  = FuncDef { funcBody      :: [Stmt]
-            , funcArgsLen   :: Int
-            , funcSyms :: [Symbol]
-            , funcDefSpan   :: Span
-            }
+data FuncDecl =
+  FuncDecl
+    { fDeclName :: String
+    , fDeclRetType :: PrimitiveType
+    , fDeclArgTypes :: [SpanW PrimitiveType]
+    , fDeclSpan :: Span
+    }
+  deriving (Show, Eq)
+
+data FuncDef =
+  FuncDef
+    { fDefName :: String
+    , fDefRetType :: PrimitiveType
+    , fDefArgTypes :: [SpanW PrimitiveType]
+    , fDefDeclSpan :: Span
+    , fDefBody :: [Stmt]
+    , fDefArgsLen :: Int
+    , fDefSyms :: [Symbol]
+    , fDefSpan :: Span
+    }
+  deriving (Show, Eq)
 
 data PrimitiveType = TypeInt | TypeBool | TypeString | TypeUser String
   deriving (Eq)
@@ -283,11 +289,11 @@ mkStmtRValue rValue = do
 mkStmtReturn :: GrammarM m => RValue -> Span -> m StmtReturn
 mkStmtReturn rValue span = do
   funcDecl <- fcGet
-  let retType = DataType [] (funcRetType funcDecl)
+  let retType = DataType [] (fDeclRetType (funcDecl :: FuncDecl))
   rValueType <- rValueDataType rValue
   unless (retType == rValueType)
     $ gThrowError --
-    $ errTypeMismatch retType (funcDeclSpan funcDecl) rValueType span
+    $ errTypeMismatch retType (fDeclSpan funcDecl) rValueType span
   return $ MkStmtReturn rValue
 
 doFuncDeclare
@@ -301,20 +307,19 @@ doFuncDeclare retType funcName argTypes span = do
   funcLookup funcName >>= throwFuncRedeclared
   let
     func = FuncDecl
-      { funcName     = funcName
-      , funcRetType  = retType
-      , funcArgTypes = argTypes
-      , funcDeclSpan = span
+      { fDeclName     = funcName
+      , fDeclRetType  = retType
+      , fDeclArgTypes = argTypes
+      , fDeclSpan     = span
       }
   funcInsert $ FuncDeclared func
-  return $ ()
  where
   throwFuncRedeclared func = case func of
     Nothing -> return ()
     Just (FuncDeclared funcDec) ->
-      gThrowError $ errFuncRedeclared span (funcDeclSpan funcDec)
-    Just (FuncDefined funcDec _) ->
-      gThrowError $ errFuncRedeclared span (funcDeclSpan (funcDec))
+      gThrowError $ errFuncRedeclared span (fDeclSpan funcDec)
+    Just (FuncDefined funcDef) ->
+      gThrowError $ errFuncRedeclared span (fDefDeclSpan funcDef)
 
 doFuncDefine
   :: GrammarM m
@@ -324,12 +329,12 @@ doFuncDefine
   -> Span
   -> m ([Stmt] -> m ())
 doFuncDefine retType name args span = do
-  funcDecl <-
+  fDecl <-
     funcLookup name
     >>= throwRedefined
     >>= (throwMismatch retType name args)
     >>= declareIfNotDeclared
-  fcEnter funcDecl
+  fcEnter fDecl
   flip mapM_ args $ \(SpanW (name, primType) span) -> fcSymInsert $ Symbol
     { symName     = name
     , symDataType = DataType [] primType
@@ -338,39 +343,45 @@ doFuncDefine retType name args span = do
   return $ \stmts -> do
     syms <- fcExit
     let
-      funcDef = FuncDef
-        { funcArgsLen = length args
-        , funcSyms    = syms
-        , funcBody    = stmts
-        , funcDefSpan = span
+      fDef = FuncDef
+        { fDefName     = fDeclName fDecl
+        , fDefRetType  = fDeclRetType fDecl
+        , fDefArgTypes = fDeclArgTypes fDecl
+        , fDefDeclSpan = fDeclSpan fDecl
+        , fDefArgsLen  = length args
+        , fDefSyms     = syms
+        , fDefBody     = stmts
+        , fDefSpan     = span
         }
-    funcInsert (FuncDefined funcDecl funcDef)
+    funcInsert (FuncDefined fDef)
  where
   throwRedefined maybeFunc = case maybeFunc of
     Nothing -> return Nothing
-    Just (FuncDefined _ func') ->
-      gThrowError $ errFuncRedefined span (funcDefSpan func')
-    Just (FuncDeclared func') -> do
-      return $ Just func'
+    Just (FuncDefined fDef) ->
+      gThrowError $ errFuncRedefined span (fDefSpan fDef)
+    Just (FuncDeclared fDecl) -> do
+      return $ Just fDecl
   throwMismatch retType name args maybeFuncDec = case maybeFuncDec of
-    Nothing         -> return Nothing
-    Just (funcDecl) -> do
+    Nothing      -> return Nothing
+    Just (fDecl) -> do
       unless
           (and
-            [ funcName funcDecl == name
-            , funcRetType funcDecl == retType
-            , (spanWVal <$> funcArgTypes funcDecl)
+            [ fDeclName fDecl == name
+            , fDeclRetType fDecl == retType
+            , (spanWVal <$> fDeclArgTypes fDecl)
               == (snd . spanWVal <$> args)
             ]
           )
         $ gThrowError
-        $ errFuncDefMismatch span (funcDeclSpan funcDecl)
-      return $ Just funcDecl
+        $ errFuncDefMismatch span (fDeclSpan fDecl)
+      return $ Just fDecl
   declareIfNotDeclared maybeFunc = case maybeFunc of
     Nothing -> do
       doFuncDeclare retType name (fmap (fmap snd) args) span
       func <- funcLookup name
-      return $ funcDecl . fromJust $ func
+      return $ case func of
+        Just (FuncDeclared fDecl) -> fDecl
+        _                         -> error "Should never happen"
     Just f -> return f
 
 mkLValue :: GrammarM m => SpanW String -> [SpanW RValue] -> m LValue
@@ -393,13 +404,13 @@ mkLValue (SpanW identName identSpan) indices = do
 
 mkExpFuncCall :: GrammarM m => String -> [SpanW RValue] -> Span -> m RValue
 mkExpFuncCall funcName args span = do
-  func <- funcLookup funcName >>= throwFuncNotDeclared
-  unless (length args == (length $ funcArgTypes . funcDecl $ func))
+  fDecl <- fDeclLookup funcName >>= throwFuncNotDeclared
+  unless (length args == (length $ fDeclArgTypes fDecl))
     $ gThrowError
     $ errFuncArgLengthMismatch
-        (length $ funcArgTypes . funcDecl $ func)
+        (length $ fDeclArgTypes fDecl)
         (length args)
-        (funcDeclSpan . funcDecl $ func)
+        (fDeclSpan fDecl)
         span
   args' <-
     mapM
@@ -422,7 +433,7 @@ mkExpFuncCall funcName args span = do
                   expectedTypeSpan
             return arg
         )
-      $ zip args (funcArgTypes . funcDecl $ func)
+      $ zip args (fDeclArgTypes fDecl)
   return $ RFuncCall funcName args'
  where
   throwFuncNotDeclared sym = case sym of
@@ -513,7 +524,7 @@ rValueDataType :: GrammarM m => RValue -> m DataType
 rValueDataType (RLValue v  ) = lValueDataType v
 rValueDataType (RExp    exp) = return $ expDataType exp
 rValueDataType (RFuncCall funcName _) =
-  (DataType []) . funcRetType . funcDecl . fromJust <$> funcLookup funcName
+  (DataType []) . fDeclRetType . fromJust <$> fDeclLookup funcName
 
 expDataType :: Exp -> DataType
 expDataType exp = case exp of
@@ -526,9 +537,10 @@ expDataType exp = case exp of
 -- DataType
 
 instance Show PrimitiveType where
-  show TypeInt    = "int"
-  show TypeString = "str"
-  show TypeBool   = "bool"
+  show TypeInt             = "int"
+  show TypeString          = "str"
+  show TypeBool            = "bool"
+  show (TypeUser typeName) = typeName
 
 instance Show DataType where
   show (DataType dims primType) =
@@ -536,7 +548,6 @@ instance Show DataType where
     in s ++ concatMap (\n -> "[" ++ show n ++ "]") dims
 
 
--- Monad
 
 -- Utilities
 
@@ -560,12 +571,15 @@ gSymInsert symbol = gsModify
   $ \gs -> gs { gsGSymbols = insertList symName symbol (gsGSymbols gs) }
 
 funcLookup :: GrammarM m => String -> m (Maybe Func)
-funcLookup name =
-  gsGets $ (find $ \s -> (funcName . funcDecl $ s) == name) . gsFuncs
+funcLookup name = gsGets $ (find $ \f -> funcName f == name) . gsFuncs
+
+funcName :: Func -> String
+funcName (FuncDeclared FuncDecl { fDeclName }) = fDeclName
+funcName (FuncDefined  FuncDef { fDefName }  ) = fDefName
 
 funcInsert :: GrammarM m => Func -> m ()
-funcInsert func = gsModify $ \gs ->
-  gs { gsFuncs = insertList (funcName . funcDecl) func (gsFuncs gs) }
+funcInsert func = gsModify
+  $ \gs -> gs { gsFuncs = insertList (funcName) func (gsFuncs gs) }
 
 hasLoop :: GrammarM m => m Bool
 hasLoop = gsGets (\gs -> gsLoopStack gs > 0)
@@ -607,6 +621,22 @@ fcSymInsert symbol = gsModify $ \gs -> gs
 
 fcHasCtxt :: GrammarM m => m Bool
 fcHasCtxt = gsGets (isJust . gsFuncContext)
+
+
+fDeclLookup :: GrammarM m => String -> m (Maybe FuncDecl)
+fDeclLookup name = do
+  func <- funcLookup name
+  case func of
+    Just (FuncDeclared fDecl) -> return $ Just fDecl
+    Just (FuncDefined FuncDef { fDefName, fDefRetType, fDefArgTypes, fDefDeclSpan })
+      -> return $ Just $ FuncDecl
+        { fDeclName     = fDefName
+        , fDeclRetType  = fDefRetType
+        , fDeclArgTypes = fDefArgTypes
+        , fDeclSpan     = fDefDeclSpan
+        }
+    Nothing -> return Nothing
+
 
 -- Errors
 

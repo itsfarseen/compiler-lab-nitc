@@ -12,9 +12,9 @@ import Data.Maybe
 import Flow
 import Text.Read (readMaybe)
 
-import Debug.Trace
-dbg v = trace (toString v) v
-dbgs s v = trace (s ++ show v) v
+-- import Debug.Trace
+-- dbg v = trace (toString v) v
+-- dbgs s v = trace (s ++ show v) v
 -- dbgst s v = trace (s ++ v) v
 
 data Machine =
