@@ -280,6 +280,51 @@ test_stmtContinue = testCaseSteps "StmtContinue" $ \step -> do
   step "Continue Outside Loop"
   gAssertError $ mkStmtContinue (Span 0 0)
 
+
+test_mkExpArithmetic :: TestTree
+test_mkExpArithmetic = testCaseSteps "Exp Arithmetic" $ \step -> do
+  step "Int Int"
+  gAssertRight $ mkExpArithmetic
+    (spanW (RExp $ ExpNum 1))
+    OpAdd
+    (spanW (RExp $ ExpNum 1))
+
+  step "Str Int"
+  gAssertError $ mkExpArithmetic
+    (spanW (RExp $ ExpStr "Foo"))
+    OpAdd
+    (spanW (RExp $ ExpNum 1))
+
+  step "Int Str"
+  gAssertError $ mkExpArithmetic
+    (spanW (RExp $ ExpNum 1))
+    OpAdd
+    (spanW (RExp $ ExpStr "Foo"))
+
+  return ()
+
+test_mkExpRelational :: TestTree
+test_mkExpRelational = testCaseSteps "Exp Relational" $ \step -> do
+  step "Int Int"
+  gAssertRight $ mkExpRelational
+    (spanW (RExp $ ExpNum 1))
+    OpLT
+    (spanW (RExp $ ExpNum 1))
+
+  step "Str Str"
+  gAssertRight $ mkExpRelational
+    (spanW (RExp $ ExpStr "A"))
+    OpLT
+    (spanW (RExp $ ExpStr "B"))
+
+  step "Int Str"
+  gAssertError $ mkExpRelational
+    (spanW (RExp $ ExpNum 1))
+    OpLT
+    (spanW (RExp $ ExpStr "B"))
+
+  return ()
+
 test_funcDeclare :: TestTree
 test_funcDeclare = testCaseSteps "Func Declare" $ \step -> do
   step "Declare function"
@@ -409,50 +454,6 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
       (Span 0 0)
     return ()
 
-test_mkExpArithmetic :: TestTree
-test_mkExpArithmetic = testCaseSteps "Exp Arithmetic" $ \step -> do
-  step "Int Int"
-  gAssertRight $ mkExpArithmetic
-    (spanW (RExp $ ExpNum 1))
-    OpAdd
-    (spanW (RExp $ ExpNum 1))
-
-  step "Str Int"
-  gAssertError $ mkExpArithmetic
-    (spanW (RExp $ ExpStr "Foo"))
-    OpAdd
-    (spanW (RExp $ ExpNum 1))
-
-  step "Int Str"
-  gAssertError $ mkExpArithmetic
-    (spanW (RExp $ ExpNum 1))
-    OpAdd
-    (spanW (RExp $ ExpStr "Foo"))
-
-  return ()
-
-test_mkExpRelational :: TestTree
-test_mkExpRelational = testCaseSteps "Exp Relational" $ \step -> do
-  step "Int Int"
-  gAssertRight $ mkExpRelational
-    (spanW (RExp $ ExpNum 1))
-    OpLT
-    (spanW (RExp $ ExpNum 1))
-
-  step "Str Str"
-  gAssertRight $ mkExpRelational
-    (spanW (RExp $ ExpStr "A"))
-    OpLT
-    (spanW (RExp $ ExpStr "B"))
-
-  step "Int Str"
-  gAssertError $ mkExpRelational
-    (spanW (RExp $ ExpNum 1))
-    OpLT
-    (spanW (RExp $ ExpStr "B"))
-
-  return ()
-
 test_mkExpFuncCall :: TestTree
 test_mkExpFuncCall = testCaseSteps "mkExpFuncCall" $ \step -> do
   step "Undeclared function"
@@ -478,3 +479,4 @@ test_mkExpFuncCall = testCaseSteps "mkExpFuncCall" $ \step -> do
     mkStmtAssign lValue exp (Span 0 0)
 
   return ()
+
