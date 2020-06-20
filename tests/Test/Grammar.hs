@@ -67,12 +67,13 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
   state <- gGetState $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
   state @?= Grammar.gsInit
-    { gsGSymbols =
-      [ Symbol
-          { symName     = "foo"
-          , symDataType = DataType [5, 10] TypeInt
-          , symDeclSpan = span0
-          }
+    { gsSymbolStack =
+      [ [ Symbol
+            { symName     = "foo"
+            , symDataType = DataType [5, 10] TypeInt
+            , symDeclSpan = span0
+            }
+        ]
       ]
     }
 
@@ -81,15 +82,36 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     _define <- doFuncDefine TypeInt "fn" [] span0
     _define []
-  gsGSymbols state
-    @?= [ Symbol
-            { symName     = "foo"
-            , symDataType = DataType [5, 10] TypeInt
-            , symDeclSpan = span0
-            }
+  gsSymbolStack state
+    @?= [ [ Symbol
+              { symName     = "foo"
+              , symDataType = DataType [5, 10] TypeInt
+              , symDeclSpan = span0
+              }
+          ]
         ]
   case gsFuncs state !! 0 of
     FuncDefined FuncDef { fDefSyms } -> fDefSyms @?= []
+    _ ->
+      assertFailure
+        $  "unexpected value of gsFuncs"
+        ++ (show $ gsFuncs state)
+
+  step "Function local var"
+  state <- gGetState $ do
+    _define <- doFuncDefine TypeInt "fn" [] span0
+    doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
+    _define []
+  gsSymbolStack state @?= [[]]
+  case gsFuncs state !! 0 of
+    FuncDefined FuncDef { fDefSyms } ->
+      fDefSyms
+        @?= [ Symbol
+                { symName     = "foo"
+                , symDataType = DataType [5, 10] TypeInt
+                , symDeclSpan = span0
+                }
+            ]
     _ ->
       assertFailure
         $  "unexpected value of gsFuncs"
@@ -287,7 +309,7 @@ test_funcDefine :: TestTree
 test_funcDefine = testCaseSteps "Func Define" $ \step -> do
 
   step "Declare and define function"
-  gAssertRight $ do
+  state <- gGetState $ do
     doFuncDeclare TypeInt "foo" (spanW <$> [TypeInt, TypeInt]) (Span 0 0)
     define <- doFuncDefine
       TypeInt
@@ -295,15 +317,71 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
       (spanW <$> [("fff", TypeInt), ("bar", TypeInt)])
       (Span 0 0)
     define []
+  state @?= Grammar.gsInit
+    { gsFuncs =
+      [ FuncDefined $ FuncDef
+          { fDefName     = "foo"
+          , fDefRetType  = TypeInt
+          , fDefArgTypes = spanW <$> [TypeInt, TypeInt]
+          , fDefDeclSpan = span0
+          , fDefBody     = []
+          , fDefArgsLen  = 2
+          , fDefSyms     =
+            [ Symbol
+              { symName     = "fff"
+              , symDataType = DataType [] TypeInt
+              , symDeclSpan = span0
+              }
+            , Symbol
+              { symName     = "bar"
+              , symDataType = DataType [] TypeInt
+              , symDeclSpan = span0
+              }
+            ]
+          , fDefSpan     = span0
+          }
+      ]
+    }
 
   step "Define without declare"
-  gAssertRight $ do
+  state <- gGetState $ do
     define <- doFuncDefine
       TypeInt
       "foo"
       (flip SpanW (Span 0 0) <$> [("fff", TypeInt), ("bar", TypeInt)])
       (Span 0 0)
+    doVarDeclare "asd" TypeInt [] span0
     define []
+  state @?= Grammar.gsInit
+    { gsFuncs =
+      [ FuncDefined $ FuncDef
+          { fDefName     = "foo"
+          , fDefRetType  = TypeInt
+          , fDefArgTypes = spanW <$> [TypeInt, TypeInt]
+          , fDefDeclSpan = span0
+          , fDefBody     = []
+          , fDefArgsLen  = 2
+          , fDefSyms     =
+            [ Symbol
+              { symName     = "fff"
+              , symDataType = DataType [] TypeInt
+              , symDeclSpan = span0
+              }
+            , Symbol
+              { symName     = "bar"
+              , symDataType = DataType [] TypeInt
+              , symDeclSpan = span0
+              }
+            , Symbol
+              { symName     = "asd"
+              , symDataType = DataType [] TypeInt
+              , symDeclSpan = span0
+              }
+            ]
+          , fDefSpan     = span0
+          }
+      ]
+    }
 
   step "Redeclare function"
   gAssertError $ do

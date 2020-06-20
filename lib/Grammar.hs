@@ -10,12 +10,12 @@ module Grammar where
 
 import Control.Monad (unless)
 import Control.Monad.Extra (unlessM)
-import Data.Maybe (fromJust, isJust)
+import Data.Functor ((<&>))
+import Data.Maybe (fromJust)
 import Data.List (find)
 import Error (Error)
 import qualified Error
 import Span
-import Data.Bifunctor (second)
 
 -- Monad
 
@@ -26,22 +26,27 @@ class Monad m => GrammarM m where
 
 data GrammarState =
   GrammarState
-    { gsGSymbols :: [Symbol]
+    { gsSymbolStack :: [[Symbol]]
     , gsFuncs :: [Func]
-    , gsFuncContext :: Maybe (FuncDecl, [Symbol])
+    , gsFuncContext :: Maybe (FuncDecl)
     , gsLoopStack :: Int
     }
     deriving (Show, Eq)
 
 gsInit :: GrammarState
 gsInit = GrammarState
-  { gsGSymbols    = []
+  { gsSymbolStack = [[]]
   , gsFuncs       = []
   , gsFuncContext = Nothing
   , gsLoopStack   = 0
   }
 
 -- AST
+
+
+data Program =
+  Program [Symbol] [Func]
+  deriving (Eq, Show)
 
 data Stmt
   = StmtAssign StmtAssign
@@ -188,19 +193,24 @@ data UserType =
     , utFields :: [Symbol]
     }
 
+mkProgram :: GrammarM m => m Program
+mkProgram = do
+  state <- gsGet
+  let
+    syms = case gsSymbolStack state of
+      [syms] -> syms
+      []     -> error $ "Should not happen - empty symbol stack"
+      _      -> error $ "Should not happen - symbol stack > 1"
+    funcs = gsFuncs state
+  return $ Program syms funcs
+
+
 doVarDeclare
   :: GrammarM m => String -> PrimitiveType -> [Int] -> Span -> m ()
 doVarDeclare identName primType dims span = do
-  fcHasCtxt <- fcHasCtxt
-  if fcHasCtxt
-    then do
-      fcSymLookup identName >>= throwSymbolExists
-      fcSymInsert symbol
-      return $ ()
-    else do
-      gSymLookup identName >>= throwSymbolExists
-      gSymInsert symbol
-      return $ ()
+  symLookupCurCtxt identName >>= throwSymbolExists
+  symInsert symbol
+  return $ ()
  where
   dataType = DataType dims primType
   symbol   = Symbol
@@ -289,7 +299,7 @@ mkStmtRValue rValue = do
 mkStmtReturn :: GrammarM m => RValue -> Span -> m StmtReturn
 mkStmtReturn rValue span = do
   funcDecl <- fcGet
-  let retType = DataType [] (fDeclRetType (funcDecl :: FuncDecl))
+  let retType = DataType [] (fDeclRetType funcDecl)
   rValueType <- rValueDataType rValue
   unless (retType == rValueType)
     $ gThrowError --
@@ -335,7 +345,7 @@ doFuncDefine retType name args span = do
     >>= (throwMismatch retType name args)
     >>= declareIfNotDeclared
   fcEnter fDecl
-  flip mapM_ args $ \(SpanW (name, primType) span) -> fcSymInsert $ Symbol
+  flip mapM_ args $ \(SpanW (name, primType) span) -> symInsert $ Symbol
     { symName     = name
     , symDataType = DataType [] primType
     , symDeclSpan = span
@@ -386,7 +396,7 @@ doFuncDefine retType name args span = do
 
 mkLValue :: GrammarM m => SpanW String -> [SpanW RValue] -> m LValue
 mkLValue (SpanW identName identSpan) indices = do
-  sym <- symLookupCombined identName >>= \case
+  sym <- symLookup identName >>= \case
     Nothing  -> gThrowError $ errIdentifierNotDeclared identName identSpan
     Just sym -> return sym
   let DataType dims _ = symDataType sym
@@ -500,25 +510,17 @@ doTypeDeclare = do
 
 -- Helper Functions
 
-symLookupCombined :: GrammarM m => String -> m (Maybe Symbol)
-symLookupCombined name = do
-  fcHasCtxt <- fcHasCtxt
-  lSym      <- if fcHasCtxt then fcSymLookup name else return $ Nothing
-  case lSym of
-    Just sym -> return $ Just sym
-    Nothing  -> gSymLookup name
-
 lValueDataType :: GrammarM m => LValue -> m DataType
 lValueDataType (LValue indices identName) = do
   (DataType dims primType) <-
-    symDataType . fromJust <$> symLookupCombined identName
+    symDataType . fromJust <$> symLookup identName
 
   let dims' = drop (length indices) dims
   return $ DataType dims' primType
 
 lValueDeclSpan :: GrammarM m => LValue -> m Span
 lValueDeclSpan (LValue _ identName) = do
-  symDeclSpan . fromJust <$> symLookupCombined identName
+  symDeclSpan . fromJust <$> symLookup identName
 
 rValueDataType :: GrammarM m => RValue -> m DataType
 rValueDataType (RLValue v  ) = lValueDataType v
@@ -563,12 +565,23 @@ insertList key a list = case list of
   (a' : as') ->
     (if key a == key a' then a : as' else a' : insertList key a as')
 
-gSymLookup :: GrammarM m => String -> m (Maybe Symbol)
-gSymLookup name = gsGets $ (find $ \s -> symName s == name) . gsGSymbols
 
-gSymInsert :: GrammarM m => Symbol -> m ()
-gSymInsert symbol = gsModify
-  $ \gs -> gs { gsGSymbols = insertList symName symbol (gsGSymbols gs) }
+
+symLookupCurCtxt :: GrammarM m => String -> m (Maybe Symbol)
+symLookupCurCtxt name =
+  gsGets $ (find $ \s -> symName s == name) . head . gsSymbolStack
+
+symLookup :: GrammarM m => String -> m (Maybe Symbol)
+symLookup name =
+  gsGets $ (find $ \s -> symName s == name) . concat . gsSymbolStack
+
+symInsert :: GrammarM m => Symbol -> m ()
+symInsert symbol = gsModify $ \gs ->
+  let
+    ssHead : ssTail = gsSymbolStack gs
+    ssHead'         = insertList symName symbol ssHead
+    gsSymbolStack'  = ssHead' : ssTail
+  in gs { gsSymbolStack = gsSymbolStack' }
 
 funcLookup :: GrammarM m => String -> m (Maybe Func)
 funcLookup name = gsGets $ (find $ \f -> funcName f == name) . gsFuncs
@@ -592,36 +605,23 @@ popLoop =
   gsModify (\gs -> gs { gsLoopStack = max 0 (gsLoopStack gs - 1) })
 
 fcEnter :: GrammarM m => FuncDecl -> m ()
-fcEnter funcDecl =
-  gsModify $ \s -> s { gsFuncContext = Just (funcDecl, []) }
+fcEnter funcDecl = gsModify $ \s -> s
+  { gsFuncContext = Just (funcDecl)
+  , gsSymbolStack = [] : gsSymbolStack s
+  }
 
 fcExit :: GrammarM m => m [Symbol]
 fcExit = do
-  (_, syms) <- gsGets (fromJust . gsFuncContext)
-  gsModify $ \s -> s { gsFuncContext = Nothing }
+  (syms, symStackTail) <- gsGets gsSymbolStack <&> \case
+    [] -> error $ "Should not happen - empty symstack"
+    [_x] -> error $ "Should not happen - singleton symstack"
+    (syms : symStackTail) -> (syms, symStackTail)
+  gsModify
+    $ \s -> s { gsSymbolStack = symStackTail, gsFuncContext = Nothing }
   return syms
 
 fcGet :: GrammarM m => m FuncDecl
-fcGet = gsGets (fst . fromJust . gsFuncContext)
-
-fcSymLookup :: GrammarM m => String -> m (Maybe Symbol)
-fcSymLookup name =
-  gsGets
-    $ (find $ \s -> symName s == name)
-    . snd
-    . fromJust
-    . gsFuncContext
-
-fcSymInsert :: GrammarM m => Symbol -> m ()
-fcSymInsert symbol = gsModify $ \gs -> gs
-  { gsFuncContext = fmap
-    (second $ insertList symName symbol)
-    (gsFuncContext gs)
-  }
-
-fcHasCtxt :: GrammarM m => m Bool
-fcHasCtxt = gsGets (isJust . gsFuncContext)
-
+fcGet = gsGets (fromJust . gsFuncContext)
 
 fDeclLookup :: GrammarM m => String -> m (Maybe FuncDecl)
 fDeclLookup name = do
