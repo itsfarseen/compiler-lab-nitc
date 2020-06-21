@@ -1,5 +1,6 @@
 module Main where
 
+import Data.Functor ((<&>))
 import Control.Monad.State
 import Control.Monad.Except (ExceptT, runExceptT, liftEither)
 import System.Environment
@@ -20,13 +21,18 @@ prompt text = do
   hFlush stdout
   getLine
 
-frontend :: Frontend ([Grammar.Func], [Grammar.Symbol])
+frontend :: Frontend ([Grammar.FuncDef], [Grammar.Symbol])
 frontend = do
   Parser.parse
-  symbols <- Grammar.gsGets Grammar.gsGSymbols
-  funcs <- Grammar.gsGets Grammar.gsFuncs
+  symbols <- Grammar.gsGets $ head . Grammar.gsSymbolStack
+  funcs <- (Grammar.gsGets Grammar.gsFuncs) <&> (map $ \func ->
+    case func of
+      Grammar.FuncDeclared fDecl -> error $ "Func declared but not defined" ++ (show fDecl)
+      Grammar.FuncDefined fDef -> fDef)
   return (funcs, symbols)
 
+
+backend :: CodeOutputMode -> Codegen.Codegen String
 backend mode = do
   execSetupGlobalSymtab
   execCallMainFunc

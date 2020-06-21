@@ -70,7 +70,7 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
     { gsSymbolStack =
       [ [ Symbol
             { symName     = "foo"
-            , symDataType = DataType [5, 10] TypeInt
+            , symType = Type2 [5, 10] TypeInt
             , symDeclSpan = span0
             }
         ]
@@ -85,7 +85,7 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
   gsSymbolStack state
     @?= [ [ Symbol
               { symName     = "foo"
-              , symDataType = DataType [5, 10] TypeInt
+              , symType = Type2 [5, 10] TypeInt
               , symDeclSpan = span0
               }
           ]
@@ -108,7 +108,7 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
       fDefSyms
         @?= [ Symbol
                 { symName     = "foo"
-                , symDataType = DataType [5, 10] TypeInt
+                , symType = Type2 [5, 10] TypeInt
                 , symDeclSpan = span0
                 }
             ]
@@ -374,12 +374,12 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
           , fDefSyms     =
             [ Symbol
               { symName     = "fff"
-              , symDataType = DataType [] TypeInt
+              , symType = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             , Symbol
               { symName     = "bar"
-              , symDataType = DataType [] TypeInt
+              , symType = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             ]
@@ -409,17 +409,17 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
           , fDefSyms     =
             [ Symbol
               { symName     = "fff"
-              , symDataType = DataType [] TypeInt
+              , symType = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             , Symbol
               { symName     = "bar"
-              , symDataType = DataType [] TypeInt
+              , symType = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             , Symbol
               { symName     = "asd"
-              , symDataType = DataType [] TypeInt
+              , symType = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             ]

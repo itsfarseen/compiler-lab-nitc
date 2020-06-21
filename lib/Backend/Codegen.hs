@@ -44,14 +44,14 @@ data CodegenState =
 data Symbol =
   Symbol
     { symName :: String
-    , symDataType :: G.DataType
+    , symType :: G.Type2
     , symRelLoc :: Int
     }
     deriving (Show, Eq)
 
 data Func = Func {
     funcName :: String
-  , funcRetType :: G.PrimitiveType
+  , funcRetType :: G.Type1
   , funcBody :: [G.Stmt]
   , funcSymbols :: [Symbol]
   , funcLocalVarsSize :: Int
@@ -95,13 +95,13 @@ buildSymbolTable symbols locBase =
  where
   f prev cur =
     let
-      G.Symbol { G.symName, G.symDataType } = cur
+      G.Symbol { G.symName, G.symType } = cur
       loc = snd prev
     in
-      ( Symbol { symName, symDataType, symRelLoc = loc }
-      , loc + (dataTypeSize symDataType)
+      ( Symbol { symName, symType, symRelLoc = loc }
+      , loc + (dataTypeSize symType)
       )
-  dataTypeSize (G.DataType dims _) = product dims
+  dataTypeSize (G.Type2 dims _) = product dims
 
 buildFuncsTable :: [G.FuncDef] -> Int -> [Func]
 buildFuncsTable funcs i = case funcs of
@@ -128,19 +128,19 @@ buildFuncArgsTable symbols locBase =
   let
     sentinel = Symbol
       { symName     = error "sentinel"
-      , symDataType = error "sentinel"
+      , symType = error "sentinel"
       , symRelLoc   = locBase + 1
       }
   in init $ scanr f sentinel symbols
  where
   f cur prev =
     let
-      G.Symbol { G.symName, G.symDataType } = cur
-      G.DataType dims _ = symDataType
+      G.Symbol { G.symName, G.symType } = cur
+      G.Type2 dims _ = symType
       size              = product dims
       -- curLoc + curSize = prevLoc
       curLoc            = symRelLoc prev - size
-    in Symbol { symName, symDataType, symRelLoc = curLoc }
+    in Symbol { symName, symType, symRelLoc = curLoc }
 
 --
 
@@ -394,7 +394,7 @@ execStmtRValue stmt = do
 getLValueLocInReg :: G.LValue -> Codegen Reg
 getLValueLocInReg lValue = do
   let (G.LValue indices ident) = lValue
-  (G.DataType dims _) <- getSymbolDataType ident
+  (G.Type2 dims _) <- getSymbolType ident
   (reg, _)          <- getLValueLocInReg' dims indices ident
   return reg
  where
@@ -516,8 +516,8 @@ getSymbol name = do
     (Nothing    , Just symbol) -> return symbol
     (Nothing    , Nothing    ) -> error $ "Symbol not found:" ++ name
 
-getSymbolDataType :: String -> Codegen G.DataType
-getSymbolDataType name = symDataType <$> getSymbol name
+getSymbolType :: String -> Codegen G.Type2
+getSymbolType name = symType <$> getSymbol name
 
 {-
 

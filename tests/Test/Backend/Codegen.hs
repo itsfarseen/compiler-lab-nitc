@@ -107,7 +107,7 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
         $ initCodegenStateInternal
             [ Symbol
                 { symName     = "foo"
-                , symDataType = G.DataType [] G.TypeInt
+                , symType = G.Type2 [] G.TypeInt
                 , symRelLoc = 0
                 }
             ]
@@ -138,7 +138,7 @@ test_execStmtAssign = testCaseSteps "execStmtAssign" $ \step -> do
         execStmtAssign (G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 10))
         getCodeTranslated
       )
-      [Symbol "foo" (G.DataType [] G.TypeInt) 0]
+      [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
       []
   let simulator = Simulator.run (Simulator.init code)
@@ -151,7 +151,7 @@ test_execStmtAssign = testCaseSteps "execStmtAssign" $ \step -> do
         execStmtAssign
           (G.MkStmtAssign (G.LValue [] "foo") (G.RLValue $ G.LValue [] "foo"))
       )
-      [Symbol "foo" (G.DataType [] G.TypeInt) 0]
+      [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
       []
   let simulator = Simulator.run (Simulator.init code)
@@ -163,7 +163,7 @@ test_execStmtRead = testCaseSteps "execStmtRead" $ \step -> do
   let
     code = cRun2
       (execStmtRead $ G.MkStmtRead $ G.LValue [] "foo")
-      [Symbol "foo" (G.DataType [] G.TypeInt) 0]
+      [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
       []
   let simulator = Simulator.run (Simulator.initWithStdin ["10"] code)
@@ -175,7 +175,7 @@ test_execStmtRead = testCaseSteps "execStmtRead" $ \step -> do
         execStmtRead $ G.MkStmtRead $ G.LValue [] "foo"
         execStmtRead $ G.MkStmtRead $ G.LValue [] "foo"
       )
-      [Symbol "foo" (G.DataType [] G.TypeInt) 0]
+      [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
       []
   let
@@ -321,7 +321,7 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
         execStmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "foo")
         execStmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "bar")
       )
-      [Symbol "foo" (G.DataType [] G.TypeInt) 0]
+      [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       0
       []
   let simulator = Simulator.run (Simulator.init code)
@@ -352,7 +352,7 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
         execStmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "foo")
         execStmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "bar")
       )
-      [Symbol "foo" (G.DataType [] G.TypeInt) 0]
+      [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       0
       []
   let simulator = Simulator.run (Simulator.init code)
@@ -384,7 +384,7 @@ test_execStmtBreak = testCaseSteps "execStmtBreak" $ \_ -> do
         execStmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "foo")
         execStmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "bar")
       )
-      [Symbol "foo" (G.DataType [] G.TypeInt) 0]
+      [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       0
       []
   let simulator = Simulator.run (Simulator.init code)
@@ -416,7 +416,7 @@ test_execStmtContinue = testCaseSteps "execStmtContinue" $ \_ -> do
         execStmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "foo")
         execStmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "bar")
       )
-      [Symbol "foo" (G.DataType [] G.TypeInt) 0]
+      [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       0
       []
   let simulator = Simulator.run (Simulator.init code)
@@ -492,8 +492,8 @@ test_execFunctionCall = testCaseSteps "execFunctionCall" $ \step -> do
           { funcName          = "foo"
           , funcRetType       = G.TypeInt
           , funcSymbols       =
-            [ Symbol "a" (G.DataType [] G.TypeInt) (-4)
-            , Symbol "b" (G.DataType [] G.TypeInt) (-3)
+            [ Symbol "a" (G.Type2 [] G.TypeInt) (-4)
+            , Symbol "b" (G.Type2 [] G.TypeInt) (-3)
             ]
           , funcBody          =
             [ G.StmtReturn $ G.MkStmtReturn $ G.RExp $ G.MkExpArithmetic
@@ -521,8 +521,8 @@ test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
         r2 <- getLValueLocInReg (G.LValue [] "bar")
         return (r1, r2)
       )
-      [ Symbol "foo" (G.DataType [] G.TypeInt) 0
-      , Symbol "bar" (G.DataType [] G.TypeInt) 1
+      [ Symbol "foo" (G.Type2 [] G.TypeInt) 0
+      , Symbol "bar" (G.Type2 [] G.TypeInt) 1
       ]
       2
       []
@@ -541,8 +541,8 @@ test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
         r2 <- getLValueLocInReg (G.LValue (G.RExp . G.ExpNum <$> [2, 3]) "bar")
         return (r1, r2)
       )
-      [ Symbol "foo" (G.DataType [3, 2] G.TypeInt) 0
-      , Symbol "bar" (G.DataType [4, 5] G.TypeInt) 6
+      [ Symbol "foo" (G.Type2 [3, 2] G.TypeInt) 0
+      , Symbol "bar" (G.Type2 [4, 5] G.TypeInt) 6
       ]
       26
       []
@@ -563,8 +563,8 @@ test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
           (\s -> s
             { lSymbols =
               Just
-                $ [ Symbol "foo" (G.DataType [] G.TypeInt) (-3)
-                  , Symbol "bar" (G.DataType [] G.TypeInt) (-2)
+                $ [ Symbol "foo" (G.Type2 [] G.TypeInt) (-3)
+                  , Symbol "bar" (G.Type2 [] G.TypeInt) (-2)
                   ]
             }
           )
@@ -589,24 +589,24 @@ test_buildFuncArgsTable = testCaseSteps "buildFuncArgsTable" $ \_steps ->
       symbols =
         [ G.Symbol
           { G.symName     = "foo"
-          , G.symDataType = G.DataType [] G.TypeInt
+          , G.symType = G.Type2 [] G.TypeInt
           , G.symDeclSpan = undefined
           }
         , G.Symbol
           { G.symName     = "bar"
-          , G.symDataType = G.DataType [] G.TypeInt
+          , G.symType = G.Type2 [] G.TypeInt
           , G.symDeclSpan = undefined
           }
         ]
     let [s1, s2] = buildFuncArgsTable symbols (-3)
     s1 @?= Symbol
       { symName     = "foo"
-      , symDataType = G.DataType [] G.TypeInt
+      , symType = G.Type2 [] G.TypeInt
       , symRelLoc   = -4
       }
     s2 @?= Symbol
       { symName     = "bar"
-      , symDataType = G.DataType [] G.TypeInt
+      , symType = G.Type2 [] G.TypeInt
       , symRelLoc   = -3
       }
 

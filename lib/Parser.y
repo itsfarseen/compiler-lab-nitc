@@ -125,7 +125,7 @@ Stmt:
 
 DoVarDeclare :: {()}
 DoVarDeclare:
-      PrimitiveType IdentDims ';'
+      Type1 IdentDims ';'
                         {% mapM_ (\x ->
                             doVarDeclare
                               (spanWVal (fst x))
@@ -200,12 +200,12 @@ StmtReturn :: {StmtReturn}
 StmtReturn:
       return RValue ';'      {% mkStmtReturn (spanWVal $2) (getSpan $2) }
 
-FunctionArg :: {SpanW (String, PrimitiveType)}
+FunctionArg :: {SpanW (String, Type1)}
 FunctionArg:
-    PrimitiveType ident
+    Type1 ident
                         { SpanW (spanWVal $2, spanWVal $1) (getSpanBwn $1 $2) }
 
-FunctionArgList :: {[SpanW (String, PrimitiveType)]}
+FunctionArgList :: {[SpanW (String, Type1)]}
 FunctionArgList:
       FunctionArg
                         { [$1] }
@@ -214,13 +214,13 @@ FunctionArgList:
 
 DoFuncDeclare :: {()}
 DoFuncDeclare:
-      PrimitiveType ident '(' ')' ';'
+      Type1 ident '(' ')' ';'
                         {% doFuncDeclare
                             (spanWVal $1)
                             (spanWVal $2)
                             []
                             (getSpanBwn $1 $5) }
-    | PrimitiveType ident '(' FunctionArgList ')' ';'
+    | Type1 ident '(' FunctionArgList ')' ';'
                         {% doFuncDeclare
                             (spanWVal $1)
                             (spanWVal $2)
@@ -228,9 +228,9 @@ DoFuncDeclare:
                             (getSpanBwn $1 $6) }
 
 FuncDefineEnter:
-      PrimitiveType ident '(' ')'
+      Type1 ident '(' ')'
                         {% doFuncDefine (spanWVal $1) (spanWVal $2) [] (getSpanBwn $1 $4) }
-    | PrimitiveType ident '(' FunctionArgList ')'
+    | Type1 ident '(' FunctionArgList ')'
                         {% doFuncDefine (spanWVal $1) (spanWVal $2) $4 (getSpanBwn $1 $5) }
 
 DoFuncDefine :: {()}
@@ -283,8 +283,8 @@ Exp:
    | RValue '&&' RValue {% (mkExpLogical $1 OpLAnd  $3) <&> flip SpanW (getSpanBwn $1 $3)}
    | RValue '||' RValue {% (mkExpLogical $1 OpLOr  $3) <&> flip SpanW (getSpanBwn $1 $3)}
 
-PrimitiveType :: {SpanW PrimitiveType}
-PrimitiveType:
+Type1 :: {SpanW Type1}
+Type1:
     int                 { SpanW TypeInt (getSpan $1) }
   | bool                { SpanW TypeBool (getSpan $1) }
   | string              { SpanW TypeString (getSpan $1) }
