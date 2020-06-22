@@ -1,0 +1,19 @@
+type foo {
+    int a;
+    int b;
+}
+foo f1;
+
+int main()
+{
+  initialize();
+  f1 = alloc();
+
+  read(f1.a);
+  read(f1.b);
+  
+  write(f1.a * 100 + f1.b);
+
+  return 0;
+}
+
