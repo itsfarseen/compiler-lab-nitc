@@ -82,9 +82,9 @@ import Debug.Trace
 
 %%
 
-Program :: {()}
+Program :: {Program}
 Program:
-      TSlist            {()}
+      TSlist            {% mkProgram }
 
 TopLevelStmt :: {()}
 TopLevelStmt:

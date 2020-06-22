@@ -39,6 +39,7 @@ data CodegenState =
     , gSymbolsSize :: Int
     , funcs :: [Func]
     , lSymbols :: Maybe [Symbol]
+    , userTypes :: [UserType]
     }
 
 data Symbol =
@@ -58,33 +59,46 @@ data Func = Func {
   , funcLabel :: String
 }
 
+data UserType =
+  UserType
+    { utName :: String
+    , utFields :: [Symbol]
+    , utSize :: Int
+    }
+
 runCodegen :: Codegen a -> CodegenState -> Either Error a
 runCodegen compiler state = evalStateT compiler state
 
 
-initCodegenState :: [G.Symbol] -> [G.FuncDef] -> CodegenState
-initCodegenState symbols funcs = initCodegenStateInternal
+initCodegenState
+  :: [G.Symbol] -> [G.FuncDef] -> [G.UserType] -> CodegenState
+initCodegenState symbols funcs userTypes = initCodegenStateInternal
   gSymbols
   gSymbolsSize
   funcs'
+  userTypes'
  where
   (gSymbols, gSymbolsSize) = buildSymbolTable symbols 0
   funcs'                   = buildFuncsTable funcs 0
+  userTypes'               = map convertUserType userTypes
 
-initCodegenStateInternal :: [Symbol] -> Int -> [Func] -> CodegenState
-initCodegenStateInternal gSymbols gSymbolsSize funcs = CodegenState
-  { freeRegs           = [[R0 .. R19]]
-  , usedRegs           = [[]]
-  , code               = []
-  , labels             = HM.empty
-  , lastLabelNo        = 0
-  , loopBreakLabels    = []
-  , loopContinueLabels = []
-  , gSymbols
-  , gSymbolsSize
-  , lSymbols           = Nothing
-  , funcs
-  }
+initCodegenStateInternal
+  :: [Symbol] -> Int -> [Func] -> [UserType] -> CodegenState
+initCodegenStateInternal gSymbols gSymbolsSize funcs userTypes =
+  CodegenState
+    { freeRegs           = [[R0 .. R19]]
+    , usedRegs           = [[]]
+    , code               = []
+    , labels             = HM.empty
+    , lastLabelNo        = 0
+    , loopBreakLabels    = []
+    , loopContinueLabels = []
+    , gSymbols
+    , gSymbolsSize
+    , lSymbols           = Nothing
+    , funcs
+    , userTypes
+    }
 
 buildSymbolTable :: [G.Symbol] -> Int -> ([Symbol], Int)
 buildSymbolTable symbols locBase =
@@ -96,7 +110,7 @@ buildSymbolTable symbols locBase =
   f prev cur =
     let
       G.Symbol { G.symName, G.symType } = cur
-      loc = snd prev
+      loc                               = snd prev
     in
       ( Symbol { symName, symType, symRelLoc = loc }
       , loc + (dataTypeSize symType)
@@ -109,15 +123,15 @@ buildFuncsTable funcs i = case funcs of
   (f : funcs') -> (toFunc f) : (buildFuncsTable funcs' (i + 1))
  where
   toFunc f = case f of
-    G.FuncDef {fDefName, fDefRetType, fDefBody, fDefArgsLen, fDefSyms }
+    G.FuncDef { fDefName, fDefRetType, fDefBody, fDefArgsLen, fDefSyms }
       -> let
            (args, localVars)     = splitAt fDefArgsLen fDefSyms
            args'                 = buildFuncArgsTable args (-3)
            (localVars', locNext) = buildSymbolTable localVars 1
          in Func
-           { funcName = fDefName
-           , funcRetType = fDefRetType
-           , funcBody = fDefBody
+           { funcName          = fDefName
+           , funcRetType       = fDefRetType
+           , funcBody          = fDefBody
            , funcSymbols       = args' ++ localVars'
            , funcLocalVarsSize = locNext - 1
            , funcLabel         = fDefName
@@ -127,21 +141,26 @@ buildFuncArgsTable :: [G.Symbol] -> Int -> [Symbol]
 buildFuncArgsTable symbols locBase =
   let
     sentinel = Symbol
-      { symName     = error "sentinel"
-      , symType = error "sentinel"
-      , symRelLoc   = locBase + 1
+      { symName   = error "sentinel"
+      , symType   = error "sentinel"
+      , symRelLoc = locBase + 1
       }
   in init $ scanr f sentinel symbols
  where
   f cur prev =
     let
       G.Symbol { G.symName, G.symType } = cur
-      G.Type2 dims _ = symType
-      size              = product dims
+      G.Type2 dims _                    = symType
+      size                              = product dims
       -- curLoc + curSize = prevLoc
-      curLoc            = symRelLoc prev - size
+      curLoc                            = symRelLoc prev - size
     in Symbol { symName, symType, symRelLoc = curLoc }
 
+
+convertUserType :: G.UserType -> UserType
+convertUserType G.UserType { G.utName, G.utFields } =
+  let (utFields', utSize) = buildSymbolTable utFields 0
+  in UserType { utName, utFields = utFields', utSize }
 --
 
 codeStartAddr :: Int
@@ -291,7 +310,7 @@ execStmtWrite stmt = do
   pushRegStack
   let G.MkStmtWrite rValue = stmt
   reg <- getRValueInReg rValue
-  t1 <- getFreeReg
+  t1  <- getFreeReg
   let
     code =
       [ XSM_MOV_Int t1 5 -- arg1: Call Number (Write = 5)
@@ -395,7 +414,7 @@ getLValueLocInReg :: G.LValue -> Codegen Reg
 getLValueLocInReg lValue = do
   let (G.LValue indices ident) = lValue
   (G.Type2 dims _) <- getSymbolType ident
-  (reg, _)          <- getLValueLocInReg' dims indices ident
+  (reg, _)         <- getLValueLocInReg' dims indices ident
   return reg
  where
   getLValueLocInReg' :: [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
@@ -416,12 +435,10 @@ getLValueLocInReg lValue = do
       return (reg, innerSize * d)
 
 backupRegs :: [Reg] -> Codegen ()
-backupRegs regs =
-    mapM_ (\reg -> appendCode [XSM_PUSH reg]) regs
+backupRegs regs = mapM_ (\reg -> appendCode [XSM_PUSH reg]) regs
 
 restoreRegs :: [Reg] -> Codegen ()
-restoreRegs regs =
-    mapM_ (\reg -> appendCode [XSM_POP reg]) regs
+restoreRegs regs = mapM_ (\reg -> appendCode [XSM_POP reg]) regs
 
 getRValueInReg :: G.RValue -> Codegen Reg
 getRValueInReg rValue = case rValue of
@@ -433,11 +450,13 @@ getRValueInReg rValue = case rValue of
     reg <- getFreeReg
     appendCode [XSM_MOV_Str reg s]
     return reg
-  G.RExp (G.MkExpArithmetic e1 op e2) -> execALUInstr (arithOpInstr op) e1 e2
+  G.RExp (G.MkExpArithmetic e1 op e2) ->
+    execALUInstr (arithOpInstr op) e1 e2
   G.RExp (G.MkExpRelational e1 op e2) ->
     execALUInstr (relationalOpInstr op) e1 e2
-  G.RExp    (G.MkExpLogical e1 op e2) -> execALUInstr (logicalOpInstr op) e1 e2
-  G.RLValue lValue                  -> do
+  G.RExp (G.MkExpLogical e1 op e2) ->
+    execALUInstr (logicalOpInstr op) e1 e2
+  G.RLValue lValue -> do
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
@@ -571,10 +590,7 @@ releaseReg reg = do
     usedRegsHead : usedRegsTail = usedRegs compiler
     freeRegs'                   = (reg : freeRegsHead) : freeRegsTail
     usedRegs' = (filter ((/=) reg) usedRegsHead) : usedRegsTail
-  put compiler
-    { freeRegs = freeRegs'
-    , usedRegs = usedRegs'
-    }
+  put compiler { freeRegs = freeRegs', usedRegs = usedRegs' }
 
 pushRegStack :: Codegen ()
 pushRegStack = modify $ \compiler -> compiler

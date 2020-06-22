@@ -39,24 +39,14 @@ main = do
 
 runGoldenTest :: FilePath -> FilePath -> IO String
 runGoldenTest explFile stdinFile = do
-  expl             <- readFile explFile
-  stdin            <- lines <$> readFile stdinFile
-  (funcs, symbols) <- handleError expl explFile $ do
+  expl                        <- readFile explFile
+  stdin                       <- lines <$> readFile stdinFile
+  (funcs, symbols, userTypes) <- handleError expl explFile $ do
     liftEither $ Frontend.runFrontend
       (Frontend.initData expl G.gsInit)
       do
-        Parser.parse
-        symbols <- G.gsGets $ head . G.gsSymbolStack
-        funcs   <- G.gsGets G.gsFuncs
-        let
-          funcDefs = map
-            (\func -> case func of
-              G.FuncDefined fDef -> fDef
-              G.FuncDeclared G.FuncDecl { G.fDeclName } ->
-                error $ "Function not defined" ++ fDeclName
-            )
-            funcs
-        return (funcDefs, symbols)
+        G.Program symbols funcDefs userTypes <- Parser.parse
+        return (funcDefs, symbols, userTypes)
   code <- handleError expl explFile $ do
     liftEither $ Codegen.runCodegen
       (do
@@ -65,7 +55,7 @@ runGoldenTest explFile stdinFile = do
         Codegen.execFuncDefs
         Codegen.getCodeTranslated
       )
-      (Codegen.initCodegenState symbols funcs)
+      (Codegen.initCodegenState symbols funcs userTypes)
   let simulator = Simulator.run (Simulator.initWithStdin stdin code)
   let stdout    = unlines $ Simulator.getStdout simulator
   return stdout

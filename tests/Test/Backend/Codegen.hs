@@ -30,12 +30,12 @@ fromRight'' x = case x of
 cRun2 :: Codegen a -> [Symbol] -> Int -> [Func] -> [XSMInstr]
 cRun2 codegenM syms symsLen funcs = fromRight'' $ runCodegen
   (execSetupGlobalSymtab >> codegenM >> getCodeTranslated)
-  (initCodegenStateInternal syms symsLen funcs)
+  (initCodegenStateInternal syms symsLen funcs [])
 
 cRun3 :: Codegen t -> [Symbol] -> Int -> [Func] -> ([XSMInstr], t)
 cRun3 codegenM syms symsLen funcs = fromRight'' $ runCodegen
   (execSetupGlobalSymtab >> codegenM >>= \a -> (, a) <$> getCodeTranslated)
-  (initCodegenStateInternal syms symsLen funcs)
+  (initCodegenStateInternal syms symsLen funcs [])
 
 execStmtsGetCode :: Codegen [XSMInstr]
 execStmtsGetCode = do
@@ -82,7 +82,8 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
                 { funcName          = "main"
                 , funcRetType       = G.TypeInt
                 , funcBody          =
-                  [ G.StmtWrite $ G.MkStmtWrite (G.RExp $ G.ExpStr "Hello World!")
+                  [ G.StmtWrite
+                    $ G.MkStmtWrite (G.RExp $ G.ExpStr "Hello World!")
                   , G.StmtReturn $ G.MkStmtReturn (G.RExp $ G.ExpNum 0)
                   ]
                 , funcSymbols       = []
@@ -90,6 +91,7 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
                 , funcLabel         = "main"
                 }
             ]
+            []
 
   let simulator = Simulator.run (Simulator.init code)
   Simulator.getStdout simulator @?= ["Hello World!"]
@@ -106,8 +108,8 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
             )
         $ initCodegenStateInternal
             [ Symbol
-                { symName     = "foo"
-                , symType = G.Type2 [] G.TypeInt
+                { symName   = "foo"
+                , symType   = G.Type2 [] G.TypeInt
                 , symRelLoc = 0
                 }
             ]
@@ -116,15 +118,17 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
                 { funcName          = "main"
                 , funcRetType       = G.TypeInt
                 , funcBody          =
-                    [ G.StmtAssign
-                      $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 121)
-                    , G.StmtReturn $ G.MkStmtReturn (G.RExp $ G.ExpNum 0)
-                    ]
+                  [ G.StmtAssign $ G.MkStmtAssign
+                    (G.LValue [] "foo")
+                    (G.RExp $ G.ExpNum 121)
+                  , G.StmtReturn $ G.MkStmtReturn (G.RExp $ G.ExpNum 0)
+                  ]
                 , funcSymbols       = []
                 , funcLocalVarsSize = 0
                 , funcLabel         = "main"
                 }
             ]
+            []
   let simulator = Simulator.run (Simulator.init code)
 
   Simulator.getMemory 4096 simulator @?= "121"
@@ -135,7 +139,8 @@ test_execStmtAssign = testCaseSteps "execStmtAssign" $ \step -> do
   let
     code = cRun2
       (do
-        execStmtAssign (G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 10))
+        execStmtAssign
+          (G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 10))
         getCodeTranslated
       )
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
@@ -147,9 +152,13 @@ test_execStmtAssign = testCaseSteps "execStmtAssign" $ \step -> do
   let
     code = cRun2
       (do
-        execStmtAssign (G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 10))
         execStmtAssign
-          (G.MkStmtAssign (G.LValue [] "foo") (G.RLValue $ G.LValue [] "foo"))
+          (G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 10))
+        execStmtAssign
+          (G.MkStmtAssign
+            (G.LValue [] "foo")
+            (G.RLValue $ G.LValue [] "foo")
+          )
       )
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
@@ -205,7 +214,11 @@ test_execStmtIf = testCaseSteps "execStmtIf" $ \step -> do
     code = cRun2
       (do
         execStmtIf $ G.MkStmtIf
-          (G.RExp $ G.MkExpRelational (G.RExp $ G.ExpNum 1) G.OpEQ (G.RExp $ G.ExpNum 1))
+          (G.RExp $ G.MkExpRelational
+            (G.RExp $ G.ExpNum 1)
+            G.OpEQ
+            (G.RExp $ G.ExpNum 1)
+          )
           (   G.StmtWrite
           <$> [ G.MkStmtWrite (G.RExp $ G.ExpNum 100)
               , G.MkStmtWrite (G.RExp $ G.ExpNum 200)
@@ -225,7 +238,11 @@ test_execStmtIf = testCaseSteps "execStmtIf" $ \step -> do
     code = cRun2
       (do
         execStmtIf $ G.MkStmtIf
-          (G.RExp $ G.MkExpRelational (G.RExp $ G.ExpNum 1) G.OpEQ (G.RExp $ G.ExpNum 2))
+          (G.RExp $ G.MkExpRelational
+            (G.RExp $ G.ExpNum 1)
+            G.OpEQ
+            (G.RExp $ G.ExpNum 2)
+          )
           (   G.StmtWrite
           <$> [ G.MkStmtWrite (G.RExp $ G.ExpNum 100)
               , G.MkStmtWrite (G.RExp $ G.ExpNum 200)
@@ -248,7 +265,11 @@ test_execStmtIfElse = testCaseSteps "execStmtIfElse" $ \step -> do
     code = cRun2
       (do
         execStmtIfElse $ G.MkStmtIfElse
-          (G.RExp $ G.MkExpRelational (G.RExp $ G.ExpNum 1) G.OpEQ (G.RExp $ G.ExpNum 1))
+          (G.RExp $ G.MkExpRelational
+            (G.RExp $ G.ExpNum 1)
+            G.OpEQ
+            (G.RExp $ G.ExpNum 1)
+          )
           (   G.StmtWrite
           <$> [ G.MkStmtWrite (G.RExp $ G.ExpNum 100)
               , G.MkStmtWrite (G.RExp $ G.ExpNum 200)
@@ -274,7 +295,11 @@ test_execStmtIfElse = testCaseSteps "execStmtIfElse" $ \step -> do
     code = cRun2
       (do
         execStmtIfElse $ G.MkStmtIfElse
-          (G.RExp $ G.MkExpRelational (G.RExp $ G.ExpNum 1) G.OpNE (G.RExp $ G.ExpNum 1))
+          (G.RExp $ G.MkExpRelational
+            (G.RExp $ G.ExpNum 1)
+            G.OpNE
+            (G.RExp $ G.ExpNum 1)
+          )
           (   G.StmtWrite
           <$> [ G.MkStmtWrite (G.RExp $ G.ExpNum 100)
               , G.MkStmtWrite (G.RExp $ G.ExpNum 200)
@@ -302,7 +327,8 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
   let
     code = cRun2
       (do
-        execStmtAssign $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 0)
+        execStmtAssign
+          $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 0)
         execStmtWhile $ G.MkStmtWhile
           (G.RExp $ G.MkExpRelational
             (G.RLValue $ G.LValue [] "foo")
@@ -333,7 +359,8 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
   let
     code = cRun2
       (do
-        execStmtAssign $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 15)
+        execStmtAssign
+          $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 15)
         execStmtWhile $ G.MkStmtWhile
           (G.RExp $ G.MkExpRelational
             (G.RLValue $ G.LValue [] "foo")
@@ -364,7 +391,8 @@ test_execStmtBreak = testCaseSteps "execStmtBreak" $ \_ -> do
   let
     code = cRun2
       (do
-        execStmtAssign $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 0)
+        execStmtAssign
+          $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 0)
         execStmtWhile $ G.MkStmtWhile
           (G.RExp $ G.MkExpRelational
             (G.RLValue $ G.LValue [] "foo")
@@ -396,7 +424,8 @@ test_execStmtContinue = testCaseSteps "execStmtContinue" $ \_ -> do
   let
     code = cRun2
       (do
-        execStmtAssign $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 0)
+        execStmtAssign
+          $ G.MkStmtAssign (G.LValue [] "foo") (G.RExp $ G.ExpNum 0)
         execStmtWhile $ G.MkStmtWhile
           (G.RExp $ G.MkExpRelational
             (G.RLValue $ G.LValue [] "foo")
@@ -466,7 +495,8 @@ test_execFunctionCall = testCaseSteps "execFunctionCall" $ \step -> do
           { funcName          = "foo"
           , funcRetType       = G.TypeInt
           , funcSymbols       = []
-          , funcBody = [G.StmtReturn $ G.MkStmtReturn $ G.RExp $ G.ExpNum (123)]
+          , funcBody          =
+            [G.StmtReturn $ G.MkStmtReturn $ G.RExp $ G.ExpNum (123)]
           , funcLocalVarsSize = 0
           , funcLabel         = "F1"
           }
@@ -481,7 +511,8 @@ test_execFunctionCall = testCaseSteps "execFunctionCall" $ \step -> do
     (code, r) = cRun3
       (do
         r <- getRValueInReg
-          (G.RFuncCall "foo" [G.RExp $ G.ExpNum 123, G.RExp $ G.ExpNum 444])
+          (G.RFuncCall "foo" [G.RExp $ G.ExpNum 123, G.RExp $ G.ExpNum 444]
+          )
         appendCode [XSM_INT 10]
         execFuncDefs
         return r
@@ -538,7 +569,8 @@ test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
     (code, (basereg, reg)) = cRun3
       (do
         r1 <- getLValueLocInReg (G.LValue [] "bar")
-        r2 <- getLValueLocInReg (G.LValue (G.RExp . G.ExpNum <$> [2, 3]) "bar")
+        r2 <- getLValueLocInReg
+          (G.LValue (G.RExp . G.ExpNum <$> [2, 3]) "bar")
         return (r1, r2)
       )
       [ Symbol "foo" (G.Type2 [3, 2] G.TypeInt) 0
@@ -589,25 +621,25 @@ test_buildFuncArgsTable = testCaseSteps "buildFuncArgsTable" $ \_steps ->
       symbols =
         [ G.Symbol
           { G.symName     = "foo"
-          , G.symType = G.Type2 [] G.TypeInt
+          , G.symType     = G.Type2 [] G.TypeInt
           , G.symDeclSpan = undefined
           }
         , G.Symbol
           { G.symName     = "bar"
-          , G.symType = G.Type2 [] G.TypeInt
+          , G.symType     = G.Type2 [] G.TypeInt
           , G.symDeclSpan = undefined
           }
         ]
     let [s1, s2] = buildFuncArgsTable symbols (-3)
     s1 @?= Symbol
-      { symName     = "foo"
-      , symType = G.Type2 [] G.TypeInt
-      , symRelLoc   = -4
+      { symName   = "foo"
+      , symType   = G.Type2 [] G.TypeInt
+      , symRelLoc = -4
       }
     s2 @?= Symbol
-      { symName     = "bar"
-      , symType = G.Type2 [] G.TypeInt
-      , symRelLoc   = -3
+      { symName   = "bar"
+      , symType   = G.Type2 [] G.TypeInt
+      , symRelLoc = -3
       }
 
 

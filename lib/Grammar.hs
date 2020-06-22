@@ -47,7 +47,7 @@ gsInit = GrammarState
 
 
 data Program =
-  Program [Symbol] [Func]
+  Program [Symbol] [FuncDef] [UserType]
   deriving (Eq, Show)
 
 data Stmt
@@ -211,8 +211,14 @@ mkProgram = do
       [syms] -> syms
       []     -> error $ "Should not happen - empty symbol stack"
       _      -> error $ "Should not happen - symbol stack > 1"
-    funcs = gsFuncs state
-  return $ Program syms funcs
+  funcs <- mapM getFuncDef (gsFuncs state)
+  let userTypes = gsUserTypes state
+  return $ Program syms funcs userTypes
+ where
+  getFuncDef func = case func of
+    FuncDeclared f ->
+      gThrowError $ errFuncNotDefined (fDeclName f) (fDeclSpan f)
+    FuncDefined f -> return f
 
 doVarDeclare :: GrammarM m => String -> Type1 -> [Int] -> Span -> m ()
 doVarDeclare identName primType dims span = do
@@ -714,6 +720,10 @@ errTypeNotAllowed allowedTypes gotType span =
 errFuncNotDeclared :: String -> Span -> Error
 errFuncNotDeclared funcName span =
   [("Function not declared: " ++ funcName, span)]
+
+errFuncNotDefined :: String -> Span -> Error
+errFuncNotDefined funcName span =
+  [("Function declared here, but not defined: " ++ funcName, span)]
 
 errFuncRedeclared :: Span -> Span -> Error
 errFuncRedeclared span declSpan =
