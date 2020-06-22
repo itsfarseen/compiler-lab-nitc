@@ -21,15 +21,11 @@ prompt text = do
   hFlush stdout
   getLine
 
-frontend :: Frontend ([Grammar.FuncDef], [Grammar.Symbol])
+frontend
+  :: Frontend ([Grammar.FuncDef], [Grammar.Symbol], [Grammar.UserType])
 frontend = do
-  Parser.parse
-  symbols <- Grammar.gsGets $ head . Grammar.gsSymbolStack
-  funcs <- (Grammar.gsGets Grammar.gsFuncs) <&> (map $ \func ->
-    case func of
-      Grammar.FuncDeclared fDecl -> error $ "Func declared but not defined" ++ (show fDecl)
-      Grammar.FuncDefined fDef -> fDef)
-  return (funcs, symbols)
+  Grammar.Program symbols funcs userTypes <- Parser.parse
+  return (funcs, symbols, userTypes)
 
 
 backend :: CodeOutputMode -> Codegen.Codegen String
@@ -43,7 +39,7 @@ backend mode = do
       return $ map toString code
     CodeOutputTranslatedWithAddress -> do
       code <- getCodeTranslated
-      let codeNumbered = zip [codeStartAddr,codeStartAddr+2..] code
+      let codeNumbered = zip [codeStartAddr, codeStartAddr + 2 ..] code
       return $ map (\(i, c) -> (show i) ++ ":\t" ++ (show c)) codeNumbered
     CodeOutputUntranslated -> do
       codeLabelled <- getCodeLabelled
@@ -59,10 +55,11 @@ data CodeOutputMode
 main :: IO ()
 main = do
   args_ <- getArgs
-  let (codeOutputMode, args) = case args_ of
-        ("-u" : args') -> (CodeOutputUntranslated, args')
-        ("-n" : args') -> (CodeOutputTranslatedWithAddress, args')
-        _              -> (CodeOutputTranslated, args_)
+  let
+    (codeOutputMode, args) = case args_ of
+      ("-u" : args') -> (CodeOutputUntranslated, args')
+      ("-n" : args') -> (CodeOutputTranslatedWithAddress, args')
+      _              -> (CodeOutputTranslated, args_)
 
   (inputFile, outputFile) <- case args of
     [inputFile] -> return (inputFile, replaceExtension inputFile ".xsm")
@@ -72,9 +69,12 @@ main = do
       exitFailure
   input <- readFile inputFile
   handleError input inputFile $ do
-    (funcs, symbols) <- liftEither
-      $ Frontend.runFrontend (Frontend.initData input Grammar.gsInit) frontend
-    output <- liftEither $ Codegen.runCodegen (backend codeOutputMode) (initCodegenState symbols funcs)
+    (funcs, symbols, userTypes) <- liftEither $ Frontend.runFrontend
+      (Frontend.initData input Grammar.gsInit)
+      frontend
+    output <- liftEither $ Codegen.runCodegen
+      (backend codeOutputMode)
+      (initCodegenState symbols funcs userTypes)
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()
