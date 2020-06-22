@@ -15,8 +15,6 @@ import Control.Monad.State.Strict
 import Data.List (find)
 import Data.List (sortOn)
 import Data.Maybe (fromJust)
-import Error
-import Span
 import qualified Data.HashMap.Strict as HM
 import qualified Grammar as G
 
@@ -24,7 +22,7 @@ import qualified Grammar as G
 -- import Debug.Trace
 -- dbgs s v = trace (s ++ ": " ++ show v) v
 
-type Codegen = StateT CodegenState (Either Error)
+type Codegen = State CodegenState
 
 data CodegenState =
   CodegenState
@@ -66,9 +64,51 @@ data UserType =
     , utSize :: Int
     }
 
-runCodegen :: Codegen a -> CodegenState -> Either Error a
-runCodegen compiler state = evalStateT compiler state
+--
 
+compileXEXE :: G.Program -> [XSMInstr]
+compileXEXE program = compileXEXE_ program getCodeTranslated
+
+compileXEXEUntranslated :: G.Program -> [(String, XSMInstr)]
+compileXEXEUntranslated program = compileXEXE_ program getCodeLabelled
+
+compileXEXE_ :: G.Program -> Codegen a -> a
+compileXEXE_ program action =
+  let (G.Program gSymbols funcs userTypes) = program
+  in
+    runCodegen
+        (do
+          execSetupGlobalSymtab
+          execCallMainFunc
+          execFuncDefs
+          action
+        )
+      $ initCodegenState gSymbols funcs userTypes
+
+
+compileLibrary :: G.Program -> [XSMInstr]
+compileLibrary program =
+  let (G.Program gSymbols funcs userTypes) = checkLibraryProgram program
+  in
+    runCodegen
+        (do
+          execFuncDefs
+          getCodeTranslated' 0
+        )
+      $ initCodegenState gSymbols funcs userTypes
+ where
+  checkLibraryProgram program@(G.Program gSymbols funcs _userTypes)
+    | length gSymbols > 0 = error "Global variables not allowed in library"
+    | length funcs > 1 = error "No extra functions allowed in library"
+    | G.fDefName (funcs !! 0) /= "library" = error
+      "Library main function should be named 'library'"
+    | otherwise = program
+
+
+--
+
+runCodegen :: Codegen a -> CodegenState -> a
+runCodegen compiler state = evalState compiler state
 
 initCodegenState
   :: [G.Symbol] -> [G.FuncDef] -> [G.UserType] -> CodegenState
@@ -174,6 +214,13 @@ getCodeTranslated = do
   labels <- gets labels
   code   <- gets code
   let codeTranslated = labelTranslate codeStartAddr code labels
+  return codeTranslated
+
+getCodeTranslated' :: Int -> Codegen [XSMInstr]
+getCodeTranslated' startAddr = do
+  labels <- gets labels
+  code   <- gets code
+  let codeTranslated = labelTranslate startAddr code labels
   return codeTranslated
 
 getCodeLabelled :: Codegen [(String, XSMInstr)]
@@ -580,7 +627,7 @@ getFreeReg = do
         usedRegs'                     = (r : usedRegsHead) : usedRegsTail
       put $ compiler { freeRegs = freeRegs', usedRegs = usedRegs' }
       return r
-    _ -> throwError $ Error.compilerError "out of registers" (Span 0 0)
+    _ -> error "out of registers"
 
 releaseReg :: Reg -> Codegen ()
 releaseReg reg = do
