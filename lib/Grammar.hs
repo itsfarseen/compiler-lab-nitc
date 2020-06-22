@@ -62,6 +62,10 @@ data Stmt
   | StmtRValue StmtRValue -- For function calls, syscall
                           -- they are both RValue and Statement
   | StmtReturn StmtReturn
+  | StmtInitialize StmtInitialize
+  | StmtAlloc StmtAlloc
+  | StmtFree StmtFree
+  | StmtPoke StmtPoke
   deriving (Show, Eq)
 
 data StmtAssign
@@ -96,13 +100,29 @@ data StmtContinue
   = MkStmtContinue
   deriving (Show, Eq)
 
+data StmtRValue =
+  MkStmtRValue RValue
+  deriving (Show, Eq)
+
 data StmtReturn =
   MkStmtReturn RValue
   deriving (Show, Eq)
 
 
-data StmtRValue =
-  MkStmtRValue RValue
+data StmtInitialize =
+  MkStmtInitialize
+  deriving (Show, Eq)
+
+data StmtAlloc =
+  MkStmtAlloc LValue
+  deriving (Show, Eq)
+
+data StmtFree =
+  MkStmtFree LValue
+  deriving (Show, Eq)
+
+data StmtPoke =
+  MkStmtPoke RValue RValue
   deriving (Show, Eq)
 
 data LValue
@@ -115,7 +135,8 @@ data RValue
   = RLValue LValue
   | RExp Exp
   | RFuncCall String [RValue]
-  | RSyscall Int Int RValue RValue RValue 
+  | RSyscall Int Int RValue RValue RValue
+  | RPeek RValue
   deriving (Show, Eq)
 
 data Exp
@@ -254,7 +275,10 @@ mkStmtAssign lhs rhs span = do
 
 mkStmtRead :: GrammarM m => SpanW LValue -> m StmtRead
 mkStmtRead (SpanW lValue lValueSpan) = do
-  typeCheck (RLValue lValue) (Type2 [] <$> [TypeInt, TypeString]) lValueSpan
+  typeCheck
+    (RLValue lValue)
+    (Type2 [] <$> [TypeInt, TypeString])
+    lValueSpan
   return $ MkStmtRead lValue
 
 mkStmtWrite :: GrammarM m => SpanW RValue -> m StmtWrite
@@ -303,6 +327,57 @@ mkStmtReturn rValue span = do
     $ gThrowError --
     $ errTypeMismatch retType (fDeclSpan funcDecl) rValueType span
   return $ MkStmtReturn rValue
+
+mkStmtInitialize :: GrammarM m => Span -> m StmtInitialize
+mkStmtInitialize _span = do
+  return $ MkStmtInitialize
+
+mkStmtAlloc :: GrammarM m => LValue -> Span -> m StmtAlloc
+mkStmtAlloc lValue span = do
+  (Type2 dims type1) <- lValueType lValue
+  declSpan           <- lValueDeclSpan lValue
+  unless (dims == [])
+    $ gThrowError --
+    $ errArrayNotAllowed span declSpan
+  unless
+      (case type1 of
+        TypeUser{} -> True
+        _          -> False
+      )
+    $ gThrowError --
+    $ errExpectedUserType type1 span declSpan
+  return $ MkStmtAlloc lValue
+
+mkStmtFree :: GrammarM m => LValue -> Span -> m StmtFree
+mkStmtFree lValue span = do
+  (Type2 dims type1) <- lValueType lValue
+  declSpan           <- lValueDeclSpan lValue
+  unless (dims == [])
+    $ gThrowError --
+    $ errArrayNotAllowed span declSpan
+  unless
+      (case type1 of
+        TypeUser{} -> True
+        _          -> False
+      )
+    $ gThrowError --
+    $ errExpectedUserType type1 span declSpan
+  return $ MkStmtFree lValue
+
+mkStmtPoke
+  :: GrammarM m => SpanW RValue -> SpanW RValue -> Span -> m StmtPoke
+mkStmtPoke rValue1SW rValue2SW span = do
+  let rValue1 = spanWVal rValue1SW
+  let rValue2 = spanWVal rValue2SW
+  typeCheck rValue1 [Type2 [] TypeInt] (getSpan rValue1SW)
+  (Type2 dims2 _) <- rValueType rValue2
+  unless (dims2 == [])
+    $ gThrowError --
+    $ errArrayNotAllowed span span
+
+  return $ MkStmtPoke rValue1 rValue2
+
+
 
 mkLValue :: GrammarM m => SpanW String -> [SpanW RValue] -> m LValue
 mkLValue (SpanW identName identSpan) indices = do
@@ -497,7 +572,7 @@ mkType1 name' =
     "int"  -> return TypeInt
     "str"  -> return TypeString
     "bool" -> return TypeBool
-    "any" -> return TypeAny
+    "any"  -> return TypeAny
     _      -> do
       gsGets ((find (\t -> utName t == name)) . gsUserTypes)
         >>= throwTypeDoesnotExist name span
@@ -508,10 +583,30 @@ mkType1 name' =
     Nothing -> gThrowError $ errTypeDoesnotExist name span
 
 
-mkExpSyscall :: GrammarM m => SpanW Int -> SpanW Int -> SpanW RValue -> SpanW RValue -> SpanW RValue -> Span -> m RValue
+mkExpSyscall
+  :: GrammarM m
+  => SpanW Int
+  -> SpanW Int
+  -> SpanW RValue
+  -> SpanW RValue
+  -> SpanW RValue
+  -> Span
+  -> m RValue
 mkExpSyscall intNum callNum arg1 arg2 arg3 _span = do
-  return $ RSyscall (spanWVal intNum) (spanWVal callNum) (spanWVal arg1) (spanWVal arg2) (spanWVal arg3)
+  return $ RSyscall
+    (spanWVal intNum)
+    (spanWVal callNum)
+    (spanWVal arg1)
+    (spanWVal arg2)
+    (spanWVal arg3)
 
+mkExpPeek :: GrammarM m => SpanW RValue -> m RValue
+mkExpPeek rValueSW = do
+  let
+    rValue = spanWVal rValueSW
+    span   = getSpan rValueSW
+  typeCheck rValue [Type2 [] TypeInt] span
+  return $ RPeek rValue
 -- Helper Functions
 
 lValueType :: GrammarM m => LValue -> m Type2
@@ -528,7 +623,8 @@ lValueDeclSpan (LValue _ identName) = do
 rValueType :: GrammarM m => RValue -> m Type2
 rValueType (RLValue v  ) = lValueType v
 rValueType (RExp    exp) = return $ expType exp
-rValueType (RSyscall {}) = return (Type2 [] TypeAny)
+rValueType (RSyscall{} ) = return (Type2 [] TypeAny)
+rValueType (RPeek{}    ) = return (Type2 [] TypeAny)
 rValueType (RFuncCall funcName _) =
   (Type2 []) . fDeclRetType . fromJust <$> fDeclLookup funcName
 
@@ -547,7 +643,7 @@ instance Show Type1 where
   show TypeString          = "str"
   show TypeBool            = "bool"
   show (TypeUser typeName) = typeName
-  show (TypeAny) = "any"
+  show (TypeAny          ) = "any"
 
 instance Show Type2 where
   show (Type2 dims primType) =
@@ -648,7 +744,7 @@ typeCheck rValue allowedTypes span = do
   unless (dataType `elem` allowedTypes || dataType == Type2 [] TypeAny)
     $ gThrowError --
     $ errTypeNotAllowed allowedTypes dataType span
-  
+
 
 -- Errors
 
@@ -733,3 +829,9 @@ errTypeRedeclared typeName declSpan span =
 errTypeDoesnotExist :: String -> Span -> Error
 errTypeDoesnotExist typeName span =
   [("Type doesnot exist: " ++ typeName, span)]
+
+errExpectedUserType :: Type1 -> Span -> Span -> Error
+errExpectedUserType t span declSpan =
+  [ ("Expected user type. Actual type: " ++ (show t), span)
+  , ("Was declared here"                            , declSpan)
+  ]

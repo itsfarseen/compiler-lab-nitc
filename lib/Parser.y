@@ -72,8 +72,13 @@ import Debug.Trace
     continue {TokenContinue  _ }
     return   {TokenReturn    _ }
 
-    type     {TokenType     _ }
-    syscall  {TokenSyscall  _ }
+    type       { TokenType       _ }
+    syscall    { TokenSyscall    _ }
+    initialize { TokenInitialize _ }
+    alloc      { TokenAlloc      _ }
+    free       { TokenFree       _ }
+    peek       { TokenPeek       _ }
+    poke       { TokenPoke       _ }
 
 %nonassoc '='
 %left '&&' '||'
@@ -119,6 +124,10 @@ Stmt:
     | StmtContinue      { [StmtContinue $1] }
     | StmtReturn        { [StmtReturn $1] }
     | StmtRValue        { [StmtRValue $1] }
+    | StmtInitialize    { [StmtInitialize $1] }
+    | StmtAlloc         { [StmtAlloc $1] }
+    | StmtFree          { [StmtFree  $1] }
+    | StmtPoke          { [StmtPoke  $1] }
     | Stmt ';'          {$1}
 
 DoVarDeclare :: {()}
@@ -197,12 +206,32 @@ StmtContinue:
 
 StmtRValue :: {StmtRValue}
 StmtRValue:
-      RValue ';'      {% mkStmtRValue (spanWVal $1) }
+      RValue ';'        {% mkStmtRValue (spanWVal $1) }
 
 StmtReturn :: {StmtReturn}
 StmtReturn:
-      return RValue ';'      {% mkStmtReturn (spanWVal $2) (getSpan $2) }
+      return RValue ';' 
+                        {% mkStmtReturn (spanWVal $2) (getSpan $2) }
 
+StmtInitialize :: {StmtInitialize}
+StmtInitialize:
+      initialize '(' ')' ';'
+                        {% mkStmtInitialize (getSpanBwn $1 $4) }
+
+StmtAlloc :: {StmtAlloc}
+StmtAlloc:
+      LValue '=' alloc '(' ')' ';'
+                        {% mkStmtAlloc (spanWVal $1) (getSpanBwn $1 $5) }
+
+StmtFree :: {StmtFree}
+StmtFree:
+      free '(' LValue ')' ';'
+                        {% mkStmtFree (spanWVal $3) (getSpanBwn $1 $4) }
+
+StmtPoke :: {StmtPoke}
+StmtPoke:
+      poke '(' RValue ',' RValue ')' ';'
+                        {% mkStmtPoke $3 $5 (getSpanBwn $1 $6) }
 
 FunctionArg :: {SpanW (String, Type1)}
 FunctionArg:
@@ -265,6 +294,8 @@ RValue:
     | syscall '(' number ',' number ',' RValue ',' RValue ',' RValue ')' 
                         {% mkExpSyscall $3 $5 $7 $9 $11 (getSpanBwn $1 $12) 
                                             <&> flip SpanW (getSpanBwn $1 $12) }
+    | peek '(' RValue ')'
+                        {% mkExpPeek $3 <&> flip SpanW (getSpanBwn $1 $4) }
 
 RValues :: {[SpanW RValue]}
 RValues:

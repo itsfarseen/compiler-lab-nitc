@@ -45,6 +45,11 @@ data Token
   | TokenReturn Span
   | TokenType Span
   | TokenSyscall Span
+  | TokenInitialize Span
+  | TokenAlloc Span
+  | TokenFree Span
+  | TokenPeek Span
+  | TokenPoke Span
   -- Constants, Identifier
   | TokenNumber (SpanW Int)
   | TokenStrLit (SpanW String)
@@ -96,6 +101,11 @@ instance HasSpan Token where
     TokenReturn         span           -> span
     TokenType           span           -> span
     TokenSyscall        span           -> span
+    TokenInitialize     span           -> span
+    TokenAlloc          span           -> span
+    TokenFree           span           -> span
+    TokenPeek           span           -> span
+    TokenPoke           span           -> span
     -- Constants, Identifier
     TokenNumber         (SpanW _ span) -> span
     TokenStrLit         (SpanW _ span) -> span

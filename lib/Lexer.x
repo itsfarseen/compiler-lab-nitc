@@ -57,6 +57,11 @@ $sq_bracket_close = \]
 @return      = "return"
 @type        = "type"
 @syscall     = "syscall"
+@initialize  = "initialize"
+@alloc       = "alloc"
+@free        = "free"
+@peek        = "peek"
+@poke        = "poke"
 
 @number      = [0-9]+
 @strlit      = \"[^\"]*\"
@@ -108,6 +113,11 @@ tokens :-
     @return      {token TokenReturn}
     @type        {token TokenType}
     @syscall     {token TokenSyscall}
+    @initialize  {token TokenInitialize}
+    @alloc       {token TokenAlloc}
+    @free        {token TokenFree}
+    @peek        {token TokenPeek}
+    @poke        {token TokenPoke}
 
     @number      {tokenInt   TokenNumber}
     @strlit      {tokenStr   TokenStrLit}
