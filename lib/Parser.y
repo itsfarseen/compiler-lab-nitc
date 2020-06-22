@@ -312,6 +312,7 @@ RValues:
 Exp :: {SpanW Exp}
 Exp:
      number             { fmap ExpNum $1 }
+   | '-' number         { fmap (\n -> ExpNum (-n)) $2 }
    | strlit             { fmap ExpStr $1 }
    | '(' Exp ')'        { $2 }
    | RValue '+' RValue  {% (mkExpArithmetic $1 OpAdd $3) <&> flip SpanW (getSpanBwn $1 $3)}
