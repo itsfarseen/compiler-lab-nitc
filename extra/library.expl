@@ -1,4 +1,5 @@
 int library(str funcCode, any arg1, any arg2, any arg3) {
+    int i;
     if(funcCode == "Read") then
         syscall(6, 7, arg1, arg2, arg3);
         return 0;
@@ -11,4 +12,32 @@ int library(str funcCode, any arg1, any arg2, any arg3) {
         syscall(10, 10, 0, 0, 0);
         return 0;
     endif
+    if(funcCode == "Heapset") then
+        i = 0;
+        while(i < 16) do
+            poke(1024 + i, 1);
+            i = i+1;
+        endwhile
+        while(i < 128) do
+            poke(1024 + i, 0);
+            i = i+1;
+        endwhile
+        return 0;
+    endif;
+    if(funcCode == "Alloc") then
+        i = 0;
+        while(i < 128) do
+            if(peek(1024 + i) == 0) then
+                poke(1024 + i, 1);
+                return (1024 + i*8);
+            endif
+            i = i+1;
+        endwhile
+        return -1;
+    endif;
+    if(funcCode == "Free") then
+        i = 0;
+        poke(1024 + ((arg1 - 1024)/8), 0);
+        return 0;
+    endif;
 }
