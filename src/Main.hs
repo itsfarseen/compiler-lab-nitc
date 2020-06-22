@@ -25,18 +25,18 @@ frontend = Parser.parse
 
 
 backend :: CodeOutputMode -> Grammar.Program -> String
-backend mode program =
-  let
-    code = case mode of
-      CodeOutputTranslated   -> map toString (compileXEXE program)
-      CodeOutputUntranslated -> map
-        (\(i, c) -> (show i) ++ ":\t" ++ (show c))
-        (compileXEXEUntranslated program)
-  in unlines (xexeHeader ++ code)
+backend mode program = case mode of
+  CodeOutputTranslated ->
+    unlines $ xexeHeader ++ (map toString (compileXEXE program))
+  CodeOutputUntranslated -> unlines $ map
+    (\(i, c) -> i ++ ":\t" ++ (show c))
+    (compileXEXEUntranslated program)
+  CodeOutputLibrary -> unlines $ map toString (compileLibrary program)
 
 data CodeOutputMode
   = CodeOutputTranslated
   | CodeOutputUntranslated
+  | CodeOutputLibrary
   deriving (Eq)
 
 main :: IO ()
@@ -45,13 +45,16 @@ main = do
   let
     (codeOutputMode, args) = case args_ of
       ("-u" : args') -> (CodeOutputUntranslated, args')
+      ("-l" : args') -> (CodeOutputLibrary, args')
       _              -> (CodeOutputTranslated, args_)
 
   (inputFile, outputFile) <- case args of
     [inputFile] -> return (inputFile, replaceExtension inputFile ".xsm")
     [inputFile, outputFile] -> return (inputFile, outputFile)
     _ -> do
-      putStrLn "Syntax: expl [-u] input [output]"
+      putStrLn "Syntax: expl [-u | -l] input [output]"
+      putStrLn "    -u Output code untranslated labels"
+      putStrLn "    -l Compile library code"
       exitFailure
   input <- readFile inputFile
   handleError input inputFile $ do

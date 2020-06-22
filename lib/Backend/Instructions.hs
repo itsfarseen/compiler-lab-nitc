@@ -65,7 +65,7 @@ toString :: XSMInstr -> String
 toString instr = case instr of
   XSM_MOV_R      rd rs          -> "MOV " ++ show rd ++ ", " ++ show rs
   XSM_MOV_Int    r  i           -> "MOV " ++ show r ++ ", " ++ show i
-  XSM_MOV_Str    r  s           -> "MOV " ++ show r ++ ", " ++ s
+  XSM_MOV_Str    r  s           -> "MOV " ++ show r ++ ", \"" ++ s ++ "\""
   XSM_MOV_IndSrc r  s           -> "MOV " ++ show r ++ ", [" ++ show s ++ "]"
   XSM_MOV_IndDst r  s           -> "MOV [" ++ show r ++ "], " ++ show s
   XSM_MOV_DirSrc r  s           -> "MOV " ++ show r ++ ", [" ++ show s ++ "]"
