@@ -39,23 +39,14 @@ main = do
 
 runGoldenTest :: FilePath -> FilePath -> IO String
 runGoldenTest explFile stdinFile = do
-  expl                        <- readFile explFile
-  stdin                       <- lines <$> readFile stdinFile
-  (funcs, symbols, userTypes) <- handleError expl explFile $ do
+  expl    <- readFile explFile
+  stdin   <- lines <$> readFile stdinFile
+  program <- handleError expl explFile $ do
     liftEither $ Frontend.runFrontend
       (Frontend.initData expl G.gsInit)
       do
-        G.Program symbols funcDefs userTypes <- Parser.parse
-        return (funcDefs, symbols, userTypes)
-  code <- handleError expl explFile $ do
-    liftEither $ Codegen.runCodegen
-      (do
-        Codegen.execSetupGlobalSymtab
-        Codegen.execCallMainFunc
-        Codegen.execFuncDefs
-        Codegen.getCodeTranslated
-      )
-      (Codegen.initCodegenState symbols funcs userTypes)
+        Parser.parse
+  let code      = Codegen.compileXEXE program
   let simulator = Simulator.run (Simulator.initWithStdin stdin code)
   let stdout    = unlines $ Simulator.getStdout simulator
   return stdout
