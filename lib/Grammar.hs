@@ -59,9 +59,9 @@ data Stmt
   | StmtWhile StmtWhile
   | StmtBreak StmtBreak
   | StmtContinue StmtContinue
-  | StmtRValue StmtRValue -- For function calls which is both an RValue and Statement
+  | StmtRValue StmtRValue -- For function calls, syscall
+                          -- they are both RValue and Statement
   | StmtReturn StmtReturn
-  | StmtSyscall StmtSyscall
   deriving (Show, Eq)
 
 data StmtAssign
@@ -100,9 +100,6 @@ data StmtReturn =
   MkStmtReturn RValue
   deriving (Show, Eq)
 
-data StmtSyscall =
-  MkStmtSyscall Int Int RValue RValue RValue
-  deriving (Show, Eq)
 
 data StmtRValue =
   MkStmtRValue RValue
@@ -118,6 +115,7 @@ data RValue
   = RLValue LValue
   | RExp Exp
   | RFuncCall String [RValue]
+  | RSyscall Int Int RValue RValue RValue 
   deriving (Show, Eq)
 
 data Exp
@@ -305,10 +303,6 @@ mkStmtReturn rValue span = do
     $ gThrowError --
     $ errTypeMismatch retType (fDeclSpan funcDecl) rValueType span
   return $ MkStmtReturn rValue
-
-mkStmtSyscall :: GrammarM m => SpanW Int -> SpanW Int -> SpanW RValue -> SpanW RValue -> SpanW RValue -> Span -> m StmtSyscall
-mkStmtSyscall intNum callNum arg1 arg2 arg3 _span = do
-  return $ MkStmtSyscall (spanWVal intNum) (spanWVal callNum) (spanWVal arg1) (spanWVal arg2) (spanWVal arg3)
 
 mkLValue :: GrammarM m => SpanW String -> [SpanW RValue] -> m LValue
 mkLValue (SpanW identName identSpan) indices = do
@@ -513,6 +507,10 @@ mkType1 name' =
     Nothing -> gThrowError $ errTypeDoesnotExist name span
 
 
+mkExpSyscall :: GrammarM m => SpanW Int -> SpanW Int -> SpanW RValue -> SpanW RValue -> SpanW RValue -> Span -> m RValue
+mkExpSyscall intNum callNum arg1 arg2 arg3 _span = do
+  return $ RSyscall (spanWVal intNum) (spanWVal callNum) (spanWVal arg1) (spanWVal arg2) (spanWVal arg3)
+
 -- Helper Functions
 
 lValueType :: GrammarM m => LValue -> m Type2
@@ -529,6 +527,7 @@ lValueDeclSpan (LValue _ identName) = do
 rValueType :: GrammarM m => RValue -> m Type2
 rValueType (RLValue v  ) = lValueType v
 rValueType (RExp    exp) = return $ expType exp
+rValueType (RSyscall {}) = return (Type2 [] TypeAny)
 rValueType (RFuncCall funcName _) =
   (Type2 []) . fDeclRetType . fromJust <$> fDeclLookup funcName
 

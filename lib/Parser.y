@@ -119,7 +119,6 @@ Stmt:
     | StmtContinue      { [StmtContinue $1] }
     | StmtReturn        { [StmtReturn $1] }
     | StmtRValue        { [StmtRValue $1] }
-    | StmtSyscall       { [StmtSyscall $1] }
     | Stmt ';'          {$1}
 
 DoVarDeclare :: {()}
@@ -204,10 +203,6 @@ StmtReturn :: {StmtReturn}
 StmtReturn:
       return RValue ';'      {% mkStmtReturn (spanWVal $2) (getSpan $2) }
 
-StmtSyscall :: {StmtSyscall}
-StmtSyscall:
-      syscall '(' number ',' number ',' RValue ',' RValue ',' RValue ')' ';'
-                             {% mkStmtSyscall $3 $5 $7 $9 $11 (getSpanBwn $1 $13) }
 
 FunctionArg :: {SpanW (String, Type1)}
 FunctionArg:
@@ -267,6 +262,9 @@ RValue:
     | ident '(' RValues ')'
                         {% mkExpFuncCall (spanWVal $1) $3 (getSpanBwn $1 $4)
                                             <&> flip SpanW (getSpanBwn $1 $4) }
+    | syscall '(' number ',' number ',' RValue ',' RValue ',' RValue ')' ';'
+                        {% mkExpSyscall $3 $5 $7 $9 $11 (getSpanBwn $1 $13) 
+                                            <&> flip SpanW (getSpanBwn $1 $13) }
 
 RValues :: {[SpanW RValue]}
 RValues:
