@@ -22,6 +22,7 @@ data Machine =
     { memory :: HM.HashMap Int String
     , registers :: HM.HashMap Int String
     , code :: [XSMInstr]
+    , library :: [XSMInstr]
     , ip :: Int
     , stdin :: [String]
     , stdout :: [String]
@@ -41,14 +42,15 @@ instance XSMStr Int where
   toXSMStr i = show i
   -- fromXSMStr s = s
 
-init :: [XSMInstr] -> Machine
-init code = initWithStdin [] code
+init :: [XSMInstr] -> [XSMInstr] -> Machine
+init code library = initWithStdin [] code library
 
-initWithStdin :: [String] -> [XSMInstr] -> Machine
-initWithStdin stdin code = Machine
+initWithStdin :: [String] -> [XSMInstr] -> [XSMInstr] -> Machine
+initWithStdin stdin code library = Machine
   { memory    = HM.empty
   , registers = HM.empty
   , code      = code
+  , library   = library
   , ip        = 2056
   , stdin     = stdin
   , stdout    = []
@@ -72,10 +74,17 @@ fetchInstr :: Machine -> Maybe XSMInstr
 fetchInstr machine =
   let
     ipVal    = ip machine
-    instrIdx = (ipVal - 2056) `div` 2
-  in if instrIdx < (length $ code machine)
-    then Just $ (code machine) !! instrIdx
-    else Nothing
+  in
+    if ipVal < 2056 then
+      let instrIdx = ipVal `div` 2
+      in if instrIdx < (length $ library machine)
+          then Just $ (library machine) !! instrIdx
+          else Nothing
+    else
+      let instrIdx = (ipVal - 2056) `div` 2
+      in if instrIdx < (length $ code machine)
+          then Just $ (code machine) !! instrIdx
+          else Nothing
 
 incrIP :: Machine -> Machine
 incrIP machine = machine { ip = ip machine + 2 }
