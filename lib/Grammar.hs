@@ -529,17 +529,21 @@ doTypeDefine name fields span = do
       gThrowError $ errTypeRedeclared name (utDeclSpan userType) span
     Nothing -> return ()
 
-mkType1 :: GrammarM m => String -> Span -> m Type1
-mkType1 name span = case name of
-  "int"  -> return TypeInt
-  "str"  -> return TypeString
-  "bool" -> return TypeBool
-  _      -> do
-    gsGets ((find (\t -> utName t == name)) . gsUserTypes)
-      >>= throwTypeDoesnotExist
-    return $ TypeUser name
+mkType1 :: GrammarM m => SpanW String -> m Type1
+mkType1 name' =
+  let
+    name = spanWVal name'
+    span = getSpan name'
+  in case name of
+    "int"  -> return TypeInt
+    "str"  -> return TypeString
+    "bool" -> return TypeBool
+    _      -> do
+      gsGets ((find (\t -> utName t == name)) . gsUserTypes)
+        >>= throwTypeDoesnotExist name span
+      return $ TypeUser name
  where
-  throwTypeDoesnotExist maybeType = case maybeType of
+  throwTypeDoesnotExist name span maybeType = case maybeType of
     Just _  -> return ()
     Nothing -> gThrowError $ errTypeDoesnotExist name span
 

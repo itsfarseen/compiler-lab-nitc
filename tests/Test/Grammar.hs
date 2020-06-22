@@ -552,7 +552,8 @@ test_doTypeDefine = testCaseSteps "Type Define" $ \step -> do
 test_mkType1 :: TestTree
 test_mkType1 = testCaseSteps "mkType1" $ \step -> do
   step "Existing type"
-  t <- gGetVals (gsInit
+  t <- gGetVals
+    (gsInit
       { gsUserTypes =
         [ UserType
             { utName     = "foo"
@@ -569,10 +570,10 @@ test_mkType1 = testCaseSteps "mkType1" $ \step -> do
       }
     )
     (do
-      mkType1 "foo" span0
+      mkType1 (spanW "foo")
     )
   t @?= TypeUser "foo"
 
   step "Non existing type"
   gAssertError $ do
-    mkType1 "foo" span0
+    mkType1 (spanW "foo")

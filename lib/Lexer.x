@@ -43,8 +43,6 @@ $brace_close = \}
 $sq_bracket_open  = \[
 $sq_bracket_close = \]
 
-@begin       = "begin"
-@end         = "end"
 @read        = "read"
 @write       = "write"
 @if          = "if"
@@ -57,14 +55,12 @@ $sq_bracket_close = \]
 @break       = "break"
 @continue    = "continue"
 @return      = "return"
-@int         = "int"
-@string      = "string"
-@bool        = "bool"
+@type        = "type"
 
 @number      = [0-9]+
 @strlit      = \"[^\"]*\"
 @ident       = [a-zA-Z_][a-zA-Z0-9_]*
-@skip        = decl|enddecl|begin|end|type|endtype
+@skip        = decl|enddecl|begin|end|endtype
 
 tokens :-
     $white+      ;
@@ -97,8 +93,6 @@ tokens :-
     $sq_bracket_open  {token TokenSqBracketOpen}
     $sq_bracket_close {token TokenSqBracketClose}
 
-    @begin       {token TokenBegin}
-    @end         {token TokenEnd}
     @read        {token TokenRead}
     @write       {token TokenWrite}
     @if          {token TokenIf}
@@ -111,9 +105,7 @@ tokens :-
     @break       {token TokenBreak}
     @continue    {token TokenContinue}
     @return      {token TokenReturn}
-    @int         {token TokenInt}
-    @string      {token TokenString}
-    @bool        {token TokenBool}
+    @type        {token TokenType}
 
     @number      {tokenInt   TokenNumber}
     @strlit      {tokenStr   TokenStrLit}

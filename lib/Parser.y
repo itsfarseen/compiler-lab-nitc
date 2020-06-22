@@ -58,9 +58,6 @@ import Debug.Trace
     '&&'     {TokenLAnd      _ }
     '||'     {TokenLOr       _ }
 
-    begin    {TokenBegin     _ }
-    end      {TokenEnd       _ }
-
     read     {TokenRead      _ }
     write    {TokenWrite     _ }
 
@@ -74,9 +71,8 @@ import Debug.Trace
     break    {TokenBreak     _ }
     continue {TokenContinue  _ }
     return   {TokenReturn    _ }
-    int      {TokenInt       _ }
-    bool     {TokenBool      _ }
-    string   {TokenString    _ }
+
+    type     {TokenType    _ }
 
 %nonassoc '='
 %left '&&' '||'
@@ -95,7 +91,8 @@ TopLevelStmt:
       DoVarDeclare      {()}
     | DoFuncDeclare     {()}
     | DoFuncDefine      {()}
-    | TopLevelStmt ';'   {$1}
+    | DoTypeDefine      {()}
+    | TopLevelStmt ';'  {$1}
 
 TSlist :: {()}
 TSlist:
@@ -128,17 +125,22 @@ DoVarDeclare:
       Type1 IdentDims ';'
                         {% mapM_ (\x ->
                             doVarDeclare
-                              (spanWVal (fst x))
+                              (fst (spanWVal x))
                               (spanWVal $1)
-                              (spanWVal (snd x))
+                              (snd (spanWVal  x))
                               (getSpanBwn $1 $3))
                             $2 }
 
-IdentDims :: {[(SpanW String, SpanW [Int])]}
+IdentDims :: {[SpanW (String, [Int])]}
 IdentDims:
-      ident Dims        { [($1, $2)] }
+      ident Dims        { [SpanW (spanWVal $1, spanWVal $2) (getSpanBwn $1 $2)] }
     | IdentDims ',' ident Dims
-                        { $1 ++ [($3, $4)] }
+                        { $1 ++ [SpanW (spanWVal $3, spanWVal $4) (getSpanBwn $3 $4)] }
+
+Dims :: {SpanW [Int]}
+Dims:
+    {- empty -}         { SpanW ([]) (Span 0 0) }
+  | Dims '[' number ']' { SpanW (spanWVal $1 ++ [spanWVal $3]) (getSpanBwn $1 $4) }
 
 StmtAssign :: {StmtAssign}
 StmtAssign:
@@ -285,14 +287,24 @@ Exp:
 
 Type1 :: {SpanW Type1}
 Type1:
-    int                 { SpanW TypeInt (getSpan $1) }
-  | bool                { SpanW TypeBool (getSpan $1) }
-  | string              { SpanW TypeString (getSpan $1) }
+    ident               {% mkType1 $1 <&> flip SpanW (getSpan $1) }
 
-Dims :: {SpanW [Int]}
-Dims:
-    {- empty -}         { SpanW ([]) (Span 0 0) }
-  | Dims '[' number ']' { SpanW (spanWVal $1 ++ [spanWVal $3]) (getSpanBwn $1 $4) }
+DoTypeDefine :: {()}
+DoTypeDefine:
+    type ident '{' FieldList '}'
+                        {% doTypeDefine (spanWVal $2) $4 (getSpanBwn $1 $2) }
+
+Field :: {[SpanW (String, Type2)]}
+Field:
+    Type1 IdentDims ';' {   
+                            map (fmap (second (\d -> Type2 d (spanWVal $1)))) $2
+                        }
+
+FieldList :: {[SpanW (String, Type2)]}
+FieldList:
+    Field               {$1}
+  | Field FieldList     {$1 ++ $2}
+
 
 {
 dbgs s v = trace (s ++ ": " ++ show v) v

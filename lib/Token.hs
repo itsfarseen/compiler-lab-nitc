@@ -31,8 +31,6 @@ data Token
   | TokenSqBracketOpen Span
   | TokenSqBracketClose Span
   -- Keywords
-  | TokenBegin Span
-  | TokenEnd Span
   | TokenRead Span
   | TokenWrite Span
   | TokenIf Span
@@ -45,9 +43,7 @@ data Token
   | TokenBreak Span
   | TokenContinue Span
   | TokenReturn Span
-  | TokenInt Span
-  | TokenBool Span
-  | TokenString Span
+  | TokenType Span
   -- Constants, Identifier
   | TokenNumber (SpanW Int)
   | TokenStrLit (SpanW String)
@@ -85,8 +81,6 @@ instance HasSpan Token where
     TokenSqBracketOpen  span           -> span
     TokenSqBracketClose span           -> span
     -- Keywords
-    TokenBegin          span           -> span
-    TokenEnd            span           -> span
     TokenRead           span           -> span
     TokenWrite          span           -> span
     TokenIf             span           -> span
@@ -99,9 +93,7 @@ instance HasSpan Token where
     TokenBreak          span           -> span
     TokenContinue       span           -> span
     TokenReturn         span           -> span
-    TokenInt            span           -> span
-    TokenBool           span           -> span
-    TokenString         span           -> span
+    TokenType           span           -> span
     -- Constants, Identifier
     TokenNumber         (SpanW _ span) -> span
     TokenStrLit         (SpanW _ span) -> span
