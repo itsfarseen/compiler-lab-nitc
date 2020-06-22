@@ -21,28 +21,18 @@ span0 = Span 0 0
 span0A :: Applicative a => a Span
 span0A = pure span0
 
-fromRight'' :: Show a => Either a p -> p
-fromRight'' x = case x of
-  Left  l -> error $ show l
-  Right r -> r
 
 
 cRun2 :: Codegen a -> [Symbol] -> Int -> [Func] -> [XSMInstr]
-cRun2 codegenM syms symsLen funcs = fromRight'' $ runCodegen
+cRun2 codegenM syms symsLen funcs = runCodegen
   (execSetupGlobalSymtab >> codegenM >> getCodeTranslated)
   (initCodegenStateInternal syms symsLen funcs [])
 
 cRun3 :: Codegen t -> [Symbol] -> Int -> [Func] -> ([XSMInstr], t)
-cRun3 codegenM syms symsLen funcs = fromRight'' $ runCodegen
+cRun3 codegenM syms symsLen funcs = runCodegen
   (execSetupGlobalSymtab >> codegenM >>= \a -> (, a) <$> getCodeTranslated)
   (initCodegenStateInternal syms symsLen funcs [])
 
-execStmtsGetCode :: Codegen [XSMInstr]
-execStmtsGetCode = do
-  execSetupGlobalSymtab
-  execCallMainFunc
-  execFuncDefs
-  getCodeTranslated
 
 
 tests :: TestTree
@@ -60,6 +50,7 @@ tests = testGroup
   , test_execFunctionCall
   , test_getLValueLocInReg
   , test_buildFuncArgsTable
+  , test_Syscall
   ]
 
 test_simpleMain :: TestTree
@@ -67,14 +58,13 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
   step "Simple 1"
   let
     code =
-      fromRight''
-        $ Codegen.runCodegen
-            (do
-              execSetupGlobalSymtab
-              execCallMainFunc
-              execFuncDefs
-              getCodeTranslated
-            )
+      Codegen.runCodegen
+          (do
+            execSetupGlobalSymtab
+            execCallMainFunc
+            execFuncDefs
+            getCodeTranslated
+          )
         $ initCodegenStateInternal
             []
             0
@@ -98,14 +88,13 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
   step "Simple 2"
   let
     code =
-      fromRight''
-        $ Codegen.runCodegen
-            (do
-              execSetupGlobalSymtab
-              execCallMainFunc
-              execFuncDefs
-              getCodeTranslated
-            )
+      Codegen.runCodegen
+          (do
+            execSetupGlobalSymtab
+            execCallMainFunc
+            execFuncDefs
+            getCodeTranslated
+          )
         $ initCodegenStateInternal
             [ Symbol
                 { symName   = "foo"
@@ -643,6 +632,21 @@ test_buildFuncArgsTable = testCaseSteps "buildFuncArgsTable" $ \_steps ->
       }
 
 
-
-
+test_Syscall :: TestTree
+test_Syscall = testCaseSteps "Syscall" $ \step -> do
+  step "Syscall Write"
+  let
+    code = cRun2
+      (execStmtRValue $ G.MkStmtRValue $ G.RSyscall
+        7
+        5
+        (G.RExp $ G.ExpNum (-2))
+        (G.RExp $ G.ExpStr "Hello")
+        (G.RExp $ G.ExpNum 0)
+      )
+      []
+      0
+      []
+  let simulator = Simulator.run (Simulator.init code)
+  Simulator.getStdout simulator @?= ["Hello"]
 

@@ -530,6 +530,42 @@ getRValueInReg rValue = case rValue of
       args
     releaseReg t
     return r1
+  G.RSyscall intNum callNum arg1 arg2 arg3 -> do
+    usedRegs <- getUsedRegs
+    backupRegs usedRegs
+    pushRegStack
+    r1 <- getRValueInReg arg1
+    r2 <- getRValueInReg arg2
+    r3 <- getRValueInReg arg3
+    t1  <- getFreeReg
+    appendCode
+        [ XSM_MOV_Int t1 callNum -- Call Number
+        , XSM_PUSH t1
+        , XSM_PUSH r1
+        , XSM_PUSH r2 -- arg2: data to be written
+        , XSM_PUSH r3 -- arg3: unused
+        , XSM_PUSH t1 -- space for return value
+        , XSM_INT intNum
+        ]
+    releaseReg t1 
+    releaseReg r1
+    releaseReg r2
+    releaseReg r3
+    restoreRegs usedRegs
+    popRegStack
+
+    retReg <- getFreeReg
+    t1  <- getFreeReg
+    appendCode
+        [ XSM_POP retReg -- 
+        , XSM_POP t1 -- arg3
+        , XSM_POP t1 -- arg2
+        , XSM_POP t1 -- arg1
+        , XSM_POP t1 -- callNum
+        ]
+    releaseReg t1
+    return retReg
+
 
 getFuncLabel :: String -> Codegen String
 getFuncLabel name =
