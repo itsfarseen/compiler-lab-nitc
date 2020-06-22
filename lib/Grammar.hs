@@ -187,6 +187,7 @@ data Type1
   | TypeBool
   | TypeString
   | TypeUser String -- Will be implemented as pointer, so single word
+  | TypeAny
   deriving (Eq)
 
 data Type2
@@ -250,48 +251,28 @@ mkStmtAssign lhs rhs span = do
 
 mkStmtRead :: GrammarM m => SpanW LValue -> m StmtRead
 mkStmtRead (SpanW lValue lValueSpan) = do
-  dataType <- lValueType lValue
-  let allowedTypes = [Type2 [] TypeInt, Type2 [] TypeString]
-  unless (dataType `elem` allowedTypes)
-    $ gThrowError --
-    $ errTypeNotAllowed allowedTypes dataType lValueSpan
+  typeCheck (RLValue lValue) (Type2 [] <$> [TypeInt, TypeString]) lValueSpan
   return $ MkStmtRead lValue
 
 mkStmtWrite :: GrammarM m => SpanW RValue -> m StmtWrite
 mkStmtWrite (SpanW rValue rValueSpan) = do
-  dataType <- rValueType rValue
-  let allowedTypes = [Type2 [] TypeInt, Type2 [] TypeString]
-  unless (dataType `elem` allowedTypes)
-    $ gThrowError --
-    $ errTypeNotAllowed allowedTypes dataType rValueSpan
+  typeCheck rValue (Type2 [] <$> [TypeInt, TypeString]) rValueSpan
   return $ MkStmtWrite rValue
 
 mkStmtIf :: GrammarM m => SpanW RValue -> [Stmt] -> m StmtIf
 mkStmtIf (SpanW cond span) body = do
-  dataType <- rValueType cond
-  unless (dataType == Type2 [] TypeBool) $ gThrowError $ errTypeNotAllowed
-    [Type2 [] TypeBool]
-    dataType
-    span
+  typeCheck cond (Type2 [] <$> [TypeBool]) span
   return $ MkStmtIf cond body
 
 mkStmtIfElse
   :: GrammarM m => SpanW RValue -> [Stmt] -> [Stmt] -> m StmtIfElse
 mkStmtIfElse (SpanW cond span) thenBody elseBody = do
-  dataType <- rValueType cond
-  unless (dataType == Type2 [] TypeBool) $ gThrowError $ errTypeNotAllowed
-    [Type2 [] TypeBool]
-    dataType
-    span
+  typeCheck cond (Type2 [] <$> [TypeBool]) span
   return $ MkStmtIfElse cond thenBody elseBody
 
 mkStmtWhile :: GrammarM m => SpanW RValue -> [Stmt] -> m StmtWhile
 mkStmtWhile (SpanW cond span) body = do
-  dataType <- rValueType cond
-  unless (dataType == Type2 [] TypeBool) $ gThrowError $ errTypeNotAllowed
-    [Type2 [] TypeBool]
-    dataType
-    span
+  typeCheck cond (Type2 [] <$> [TypeBool]) span
   return $ MkStmtWhile cond body
 
 mkStmtBreak :: GrammarM m => Span -> m StmtBreak
@@ -330,9 +311,7 @@ mkLValue (SpanW identName identSpan) indices = do
     $ gThrowError (Error.customError "Too much indices" identSpan) -- TODO Better error
   indices' <- mapM
     (\(SpanW index indexSpan) -> do
-      indexType <- rValueType index
-      unless (indexType == Type2 [] TypeInt) $ gThrowError
-        (Error.customError "mkArrayIndex: index not int" indexSpan) -- TODO Better error
+      typeCheck index [Type2 [] TypeInt] indexSpan
       return $ index
     )
     indices
@@ -341,52 +320,29 @@ mkLValue (SpanW identName identSpan) indices = do
 mkExpArithmetic
   :: GrammarM m => SpanW RValue -> OpArithmetic -> SpanW RValue -> m Exp
 mkExpArithmetic (SpanW r1 span1) op (SpanW r2 span2) = do
-  dataType1 <- rValueType r1
-  unless (dataType1 == Type2 [] TypeInt)
-    $ gThrowError (errTypeNotAllowed [Type2 [] TypeInt] dataType1 span1)
-  dataType2 <- rValueType r2
-  unless (dataType2 == Type2 [] TypeInt)
-    $ gThrowError (errTypeNotAllowed [Type2 [] TypeInt] dataType2 span2)
+  typeCheck r1 (Type2 [] <$> [TypeInt]) span1
+  typeCheck r2 (Type2 [] <$> [TypeInt]) span2
   return $ MkExpArithmetic r1 op r2
 
 mkExpRelational
   :: GrammarM m => SpanW RValue -> OpRelational -> SpanW RValue -> m Exp
 mkExpRelational (SpanW r1 span1) op (SpanW r2 span2) = do
-  let allowedTypes = [Type2 [] TypeInt, Type2 [] TypeString]
+  typeCheck r1 (Type2 [] <$> [TypeInt, TypeString]) span1
+  typeCheck r2 (Type2 [] <$> [TypeInt, TypeString]) span2
 
   dataType1 <- rValueType r1
-  unless (dataType1 `elem` allowedTypes)
-    $ gThrowError --
-    $ errTypeNotAllowed allowedTypes dataType1 span1
-
   dataType2 <- rValueType r2
-  unless (dataType2 `elem` allowedTypes)
-    $ gThrowError --
-    $ errTypeNotAllowed allowedTypes dataType2 span2
-
   unless (dataType1 == dataType2)
     $ gThrowError --
     $ errTypeMismatch dataType1 span1 dataType2 span2
 
   return $ MkExpRelational r1 op r2
+
 mkExpLogical
   :: GrammarM m => SpanW RValue -> OpLogical -> SpanW RValue -> m Exp
 mkExpLogical (SpanW r1 span1) op (SpanW r2 span2) = do
-  let allowedTypes = [Type2 [] TypeBool]
-
-  dataType1 <- rValueType r1
-  unless (dataType1 `elem` allowedTypes)
-    $ gThrowError --
-    $ errTypeNotAllowed allowedTypes dataType1 span1
-
-  dataType2 <- rValueType r2
-  unless (dataType2 `elem` allowedTypes)
-    $ gThrowError --
-    $ errTypeNotAllowed allowedTypes dataType2 span2
-
-  unless (dataType1 == dataType2)
-    $ gThrowError --
-    $ errTypeMismatch dataType1 span1 dataType2 span2
+  typeCheck r1 (Type2 [] <$> [TypeBool]) span1
+  typeCheck r2 (Type2 [] <$> [TypeBool]) span2
 
   return $ MkExpLogical r1 op r2
 
@@ -489,13 +445,7 @@ mkExpFuncCall funcName args span = do
           do
             argType <- rValueType arg
             let (Type2 dims argPrimType) = argType
-            unless (length dims == 0)
-              $ gThrowError --
-              $ errTypeNotAllowed
-                  [Type2 [] TypeInt, Type2 [] TypeString]
-                  argType
-                  argSpan
-            unless (argPrimType == expectedType)
+            unless (length dims == 0 && argPrimType == expectedType)
               $ gThrowError
               $ errTypeMismatch
                   argType
@@ -588,6 +538,7 @@ instance Show Type1 where
   show TypeString          = "str"
   show TypeBool            = "bool"
   show (TypeUser typeName) = typeName
+  show (TypeAny) = "any"
 
 instance Show Type2 where
   show (Type2 dims primType) =
@@ -682,6 +633,13 @@ fDeclLookup name = do
         }
     Nothing -> return Nothing
 
+typeCheck :: GrammarM m => RValue -> [Type2] -> Span -> m ()
+typeCheck rValue allowedTypes span = do
+  dataType <- rValueType rValue
+  unless (dataType `elem` allowedTypes || dataType == Type2 [] TypeAny)
+    $ gThrowError --
+    $ errTypeNotAllowed allowedTypes dataType span
+  
 
 -- Errors
 
