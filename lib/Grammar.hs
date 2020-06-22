@@ -30,6 +30,7 @@ data GrammarState =
     , gsFuncs :: [Func]
     , gsFuncContext :: Maybe (FuncDecl)
     , gsLoopStack :: Int
+    , gsUserTypes :: [UserType]
     }
     deriving (Show, Eq)
 
@@ -39,6 +40,7 @@ gsInit = GrammarState
   , gsFuncs       = []
   , gsFuncContext = Nothing
   , gsLoopStack   = 0
+  , gsUserTypes   = []
   }
 
 -- AST
@@ -197,7 +199,9 @@ data UserType =
   UserType
     { utName :: String
     , utFields :: [Symbol]
+    , utDeclSpan :: Span
     }
+    deriving (Eq, Show)
 
 mkProgram :: GrammarM m => m Program
 mkProgram = do
@@ -210,19 +214,15 @@ mkProgram = do
     funcs = gsFuncs state
   return $ Program syms funcs
 
-doVarDeclare
-  :: GrammarM m => String -> Type1 -> [Int] -> Span -> m ()
+doVarDeclare :: GrammarM m => String -> Type1 -> [Int] -> Span -> m ()
 doVarDeclare identName primType dims span = do
   symLookupCurCtxt identName >>= throwSymbolExists
   symInsert symbol
   return $ ()
  where
   dataType = Type2 dims primType
-  symbol   = Symbol
-    { symName     = identName
-    , symDeclSpan = span
-    , symType = dataType
-    }
+  symbol =
+    Symbol { symName = identName, symDeclSpan = span, symType = dataType }
   throwSymbolExists maybeSym = case maybeSym of
     Nothing  -> return ()
     Just sym -> gThrowError
@@ -263,26 +263,29 @@ mkStmtWrite (SpanW rValue rValueSpan) = do
 mkStmtIf :: GrammarM m => SpanW RValue -> [Stmt] -> m StmtIf
 mkStmtIf (SpanW cond span) body = do
   dataType <- rValueType cond
-  unless (dataType == Type2 [] TypeBool)
-    $ gThrowError
-    $ errTypeNotAllowed [Type2 [] TypeBool] dataType span
+  unless (dataType == Type2 [] TypeBool) $ gThrowError $ errTypeNotAllowed
+    [Type2 [] TypeBool]
+    dataType
+    span
   return $ MkStmtIf cond body
 
 mkStmtIfElse
   :: GrammarM m => SpanW RValue -> [Stmt] -> [Stmt] -> m StmtIfElse
 mkStmtIfElse (SpanW cond span) thenBody elseBody = do
   dataType <- rValueType cond
-  unless (dataType == Type2 [] TypeBool)
-    $ gThrowError
-    $ errTypeNotAllowed [Type2 [] TypeBool] dataType span
+  unless (dataType == Type2 [] TypeBool) $ gThrowError $ errTypeNotAllowed
+    [Type2 [] TypeBool]
+    dataType
+    span
   return $ MkStmtIfElse cond thenBody elseBody
 
 mkStmtWhile :: GrammarM m => SpanW RValue -> [Stmt] -> m StmtWhile
 mkStmtWhile (SpanW cond span) body = do
   dataType <- rValueType cond
-  unless (dataType == Type2 [] TypeBool)
-    $ gThrowError
-    $ errTypeNotAllowed [Type2 [] TypeBool] dataType span
+  unless (dataType == Type2 [] TypeBool) $ gThrowError $ errTypeNotAllowed
+    [Type2 [] TypeBool]
+    dataType
+    span
   return $ MkStmtWhile cond body
 
 mkStmtBreak :: GrammarM m => Span -> m StmtBreak
@@ -333,11 +336,11 @@ mkExpArithmetic
   :: GrammarM m => SpanW RValue -> OpArithmetic -> SpanW RValue -> m Exp
 mkExpArithmetic (SpanW r1 span1) op (SpanW r2 span2) = do
   dataType1 <- rValueType r1
-  unless (dataType1 == Type2 [] TypeInt) $ gThrowError
-    (errTypeNotAllowed [Type2 [] TypeInt] dataType1 span1)
+  unless (dataType1 == Type2 [] TypeInt)
+    $ gThrowError (errTypeNotAllowed [Type2 [] TypeInt] dataType1 span1)
   dataType2 <- rValueType r2
-  unless (dataType2 == Type2 [] TypeInt) $ gThrowError
-    (errTypeNotAllowed [Type2 [] TypeInt] dataType2 span2)
+  unless (dataType2 == Type2 [] TypeInt)
+    $ gThrowError (errTypeNotAllowed [Type2 [] TypeInt] dataType2 span2)
   return $ MkExpArithmetic r1 op r2
 
 mkExpRelational
@@ -382,12 +385,7 @@ mkExpLogical (SpanW r1 span1) op (SpanW r2 span2) = do
   return $ MkExpLogical r1 op r2
 
 doFuncDeclare
-  :: GrammarM m
-  => Type1
-  -> String
-  -> [SpanW Type1]
-  -> Span
-  -> m ()
+  :: GrammarM m => Type1 -> String -> [SpanW Type1] -> Span -> m ()
 doFuncDeclare retType funcName argTypes span = do
   funcLookup funcName >>= throwFuncRedeclared
   let
@@ -422,7 +420,7 @@ doFuncDefine retType name args span = do
   fcEnter fDecl
   flip mapM_ args $ \(SpanW (name, primType) span) -> symInsert $ Symbol
     { symName     = name
-    , symType = Type2 [] primType
+    , symType     = Type2 [] primType
     , symDeclSpan = span
     }
   return $ \stmts -> do
@@ -508,17 +506,49 @@ mkExpFuncCall funcName args span = do
     Just sym -> return sym
 
 
-doTypeDeclare :: GrammarM m => String -> [(Type2, String, Span)] -> m ()
-doTypeDeclare = do
-  error "Not implemented"
+doTypeDefine
+  :: GrammarM m => String -> [SpanW (String, Type2)] -> Span -> m ()
+doTypeDefine name fields span = do
+  gsGets ((find (\t -> utName t == name)) . gsUserTypes)
+    >>= throwExistingType
+  let
+    userType =
+      UserType { utName = name, utFields = fields', utDeclSpan = span }
+    fields' = map
+      (\fieldSpanW ->
+        let
+          (symName, symType) = spanWVal fieldSpanW
+          symDeclSpan        = getSpan fieldSpanW
+        in Symbol { symName, symType, symDeclSpan }
+      )
+      fields
+  gsModify (\gs -> gs { gsUserTypes = gsUserTypes gs ++ [userType] })
+ where
+  throwExistingType maybeType = case maybeType of
+    Just userType ->
+      gThrowError $ errTypeRedeclared name (utDeclSpan userType) span
+    Nothing -> return ()
+
+mkType1 :: GrammarM m => String -> Span -> m Type1
+mkType1 name span = case name of
+  "int"  -> return TypeInt
+  "str"  -> return TypeString
+  "bool" -> return TypeBool
+  _      -> do
+    gsGets ((find (\t -> utName t == name)) . gsUserTypes)
+      >>= throwTypeDoesnotExist
+    return $ TypeUser name
+ where
+  throwTypeDoesnotExist maybeType = case maybeType of
+    Just _  -> return ()
+    Nothing -> gThrowError $ errTypeDoesnotExist name span
 
 
 -- Helper Functions
 
 lValueType :: GrammarM m => LValue -> m Type2
 lValueType (LValue indices identName) = do
-  (Type2 dims primType) <-
-    symType . fromJust <$> symLookup identName
+  (Type2 dims primType) <- symType . fromJust <$> symLookup identName
 
   let dims' = drop (length indices) dims
   return $ Type2 dims' primType
@@ -541,7 +571,7 @@ expType exp = case exp of
   MkExpRelational{} -> Type2 [] TypeBool
   MkExpLogical{}    -> Type2 [] TypeBool
 
--- Type2
+-- Types
 
 instance Show Type1 where
   show TypeInt             = "int"
@@ -655,6 +685,7 @@ errIdentifierRedeclared identName declSpan span =
   , ("Was already declared here"           , declSpan)
   ]
 
+
 errTypeMismatch :: Type2 -> Span -> Type2 -> Span -> Error
 errTypeMismatch identType declSpan rhsType span =
   [ ( "Type mismatch: Expected "
@@ -712,3 +743,12 @@ errArrayNotAllowed span declSpan =
   , ("Was declared here"                       , declSpan)
   ]
 
+errTypeRedeclared :: String -> Span -> Span -> Error
+errTypeRedeclared typeName declSpan span =
+  [ ("Type redeclared: " ++ typeName, span)
+  , ("Was already declared here"    , declSpan)
+  ]
+
+errTypeDoesnotExist :: String -> Span -> Error
+errTypeDoesnotExist typeName span =
+  [("Type doesnot exist: " ++ typeName, span)]

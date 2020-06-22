@@ -27,16 +27,22 @@ instance GrammarM TestGrammarM where
   gThrowError = throwError
 
 gRun :: TestGrammarM a -> Either Error (a, GrammarState)
-gRun (TestGrammarM stateT) = runExcept $ runStateT stateT Grammar.gsInit
+gRun = gRuns gsInit
 
-gGetRight :: TestGrammarM a -> IO (a, GrammarState)
-gGetRight = getRight . gRun
+gRuns :: GrammarState -> TestGrammarM a -> Either Error (a, GrammarState)
+gRuns state (TestGrammarM stateT) = runExcept $ runStateT stateT state
+
+gGetVals :: GrammarState -> TestGrammarM a -> IO a
+gGetVals state = (fmap fst) <$> getRight . gRuns state
+
+gGetVal :: TestGrammarM a -> IO a
+gGetVal = gGetVals gsInit
 
 gGetState :: TestGrammarM a -> IO GrammarState
-gGetState x = snd <$> gGetRight x
+gGetState = (fmap snd) <$> getRight . gRuns gsInit
 
 gAssertRight :: TestGrammarM a -> IO ()
-gAssertRight x = gGetRight x >> return ()
+gAssertRight x = gGetVal x >> return ()
 
 gAssertError :: TestGrammarM a -> IO ()
 gAssertError = assertError . gRun
@@ -59,6 +65,8 @@ tests = testGroup
   , test_mkExpArithmetic
   , test_mkExpRelational
   , test_mkExpFuncCall
+  , test_doTypeDefine
+  , test_mkType1
   ]
 
 test_varDeclare :: TestTree
@@ -70,7 +78,7 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
     { gsSymbolStack =
       [ [ Symbol
             { symName     = "foo"
-            , symType = Type2 [5, 10] TypeInt
+            , symType     = Type2 [5, 10] TypeInt
             , symDeclSpan = span0
             }
         ]
@@ -85,7 +93,7 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
   gsSymbolStack state
     @?= [ [ Symbol
               { symName     = "foo"
-              , symType = Type2 [5, 10] TypeInt
+              , symType     = Type2 [5, 10] TypeInt
               , symDeclSpan = span0
               }
           ]
@@ -108,7 +116,7 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
       fDefSyms
         @?= [ Symbol
                 { symName     = "foo"
-                , symType = Type2 [5, 10] TypeInt
+                , symType     = Type2 [5, 10] TypeInt
                 , symDeclSpan = span0
                 }
             ]
@@ -374,12 +382,12 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
           , fDefSyms     =
             [ Symbol
               { symName     = "fff"
-              , symType = Type2 [] TypeInt
+              , symType     = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             , Symbol
               { symName     = "bar"
-              , symType = Type2 [] TypeInt
+              , symType     = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             ]
@@ -409,17 +417,17 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
           , fDefSyms     =
             [ Symbol
               { symName     = "fff"
-              , symType = Type2 [] TypeInt
+              , symType     = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             , Symbol
               { symName     = "bar"
-              , symType = Type2 [] TypeInt
+              , symType     = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             , Symbol
               { symName     = "asd"
-              , symType = Type2 [] TypeInt
+              , symType     = Type2 [] TypeInt
               , symDeclSpan = span0
               }
             ]
@@ -480,3 +488,91 @@ test_mkExpFuncCall = testCaseSteps "mkExpFuncCall" $ \step -> do
 
   return ()
 
+test_doTypeDefine :: TestTree
+test_doTypeDefine = testCaseSteps "Type Define" $ \step -> do
+  step "New type"
+  state <- gGetState $ do
+    doTypeDefine
+      "myType"
+      [spanW ("foo", Type2 [] TypeInt), spanW ("bar", Type2 [2] TypeInt)]
+      span0
+    doTypeDefine
+      "myType2"
+      [spanW ("foo", Type2 [] TypeInt), spanW ("bar", Type2 [2] TypeInt)]
+      span0
+
+  state @?= gsInit
+    { gsUserTypes =
+      [ UserType
+        { utName     = "myType"
+        , utFields   =
+          [ Symbol
+            { symName     = "foo"
+            , symType     = Type2 [] TypeInt
+            , symDeclSpan = span0
+            }
+          , Symbol
+            { symName     = "bar"
+            , symType     = Type2 [2] TypeInt
+            , symDeclSpan = span0
+            }
+          ]
+        , utDeclSpan = span0
+        }
+      , UserType
+        { utName     = "myType2"
+        , utFields   =
+          [ Symbol
+            { symName     = "foo"
+            , symType     = Type2 [] TypeInt
+            , symDeclSpan = span0
+            }
+          , Symbol
+            { symName     = "bar"
+            , symType     = Type2 [2] TypeInt
+            , symDeclSpan = span0
+            }
+          ]
+        , utDeclSpan = span0
+        }
+      ]
+    }
+
+  step "Redeclare type"
+  gAssertError $ do
+    doTypeDefine
+      "myType"
+      [spanW ("foo", Type2 [] TypeInt), spanW ("bar", Type2 [2] TypeInt)]
+      span0
+    doTypeDefine
+      "myType"
+      [spanW ("foo", Type2 [] TypeInt), spanW ("bar", Type2 [2] TypeInt)]
+      span0
+
+test_mkType1 :: TestTree
+test_mkType1 = testCaseSteps "mkType1" $ \step -> do
+  step "Existing type"
+  t <- gGetVals (gsInit
+      { gsUserTypes =
+        [ UserType
+            { utName     = "foo"
+            , utFields   =
+              [ Symbol
+                  { symName     = "fooa"
+                  , symType     = Type2 [] TypeInt
+                  , symDeclSpan = span0
+                  }
+              ]
+            , utDeclSpan = span0
+            }
+        ]
+      }
+    )
+    (do
+      mkType1 "foo" span0
+    )
+  t @?= TypeUser "foo"
+
+  step "Non existing type"
+  gAssertError $ do
+    mkType1 "foo" span0
