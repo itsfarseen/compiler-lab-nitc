@@ -46,6 +46,7 @@ import Debug.Trace
 
     ';'      {TokenSemiColon _ }
     ','      {TokenComma     _ }
+    '.'      {TokenDot       _ }
     '='      {TokenEquals    _ }
 
     '<'      {TokenLT        _ }
@@ -273,8 +274,14 @@ DoFuncDefine:
 
 LValue :: {SpanW LValue}
 LValue:
-      ident             {% mkLValue $1 [] <&> flip SpanW (getSpan $1)}
-    | ident Indices     {% mkLValue $1 (spanWVal $2) <&> flip SpanW (getSpanBwn $1 $2)}
+      ident             {% mkLValueSymbol $1 [] <&> flip SpanW (getSpan $1)}
+    | ident Indices     {% mkLValueSymbol $1 (spanWVal $2) 
+                                    <&> flip SpanW (getSpanBwn $1 $2)}
+    | LValue '.' ident  {% mkLValueField (spanWVal $1) $3 []
+                                    <&> flip SpanW (getSpanBwn $1 $3)}
+    | LValue '.' ident Indices 
+                        {% mkLValueField (spanWVal $1) $3 (spanWVal $4)
+                                    <&> flip SpanW (getSpanBwn $1 $4)}
 
 Indices :: {SpanW [SpanW RValue]}
 Indices:

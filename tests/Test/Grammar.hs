@@ -51,7 +51,7 @@ tests :: TestTree
 tests = testGroup
   "Codegen"
   [ test_varDeclare
-  , test_mkLValue
+  , test_mkLValueSymbol
   , test_stmtAssign
   , test_stmtRead
   , test_stmtWrite
@@ -130,25 +130,25 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
     doVarDeclare "foo" TypeInt [1, 2] (Span 0 0)
     doVarDeclare "foo" TypeInt [2, 2] (Span 0 0)
 
-test_mkLValue :: TestTree
-test_mkLValue = testCaseSteps "mkLValue" $ \step -> do
+test_mkLValueSymbol :: TestTree
+test_mkLValueSymbol = testCaseSteps "mkLValueSymbol" $ \step -> do
   step "Undeclared LValue"
-  gAssertError $ mkLValue (spanW "foo") []
+  gAssertError $ mkLValueSymbol (spanW "foo") []
 
   step "Declared LValue"
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
-    mkLValue (spanW "foo") []
+    mkLValueSymbol (spanW "foo") []
 
   step "Too many index"
   gAssertError $ do
     doVarDeclare "foo" TypeInt [1, 2, 3] (Span 0 0)
-    mkLValue (spanW "foo") (spanW . RExp . ExpNum <$> [0, 1, 0, 0])
+    mkLValueSymbol (spanW "foo") (spanW . RExp . ExpNum <$> [0, 1, 0, 0])
 
   step "Correct index"
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [5, 5] (Span 0 0)
-    mkLValue (spanW "foo") (spanW . RExp . ExpNum <$> [2, 2])
+    mkLValueSymbol (spanW "foo") (spanW . RExp . ExpNum <$> [2, 2])
 
 test_stmtAssign :: TestTree
 test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
@@ -156,7 +156,7 @@ test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     mkStmtAssign
-      (LValue (RExp . ExpNum <$> [1, 2]) "foo")
+      (LValueSymbol "foo" (RExp . ExpNum <$> [1, 2]))
       (RExp $ ExpNum 10)
       (Span 0 0)
 
@@ -165,20 +165,20 @@ test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     doVarDeclare "bar" TypeInt []      (Span 0 0)
     mkStmtAssign
-      (LValue (RExp . ExpNum <$> [1, 2]) "foo")
-      (RLValue $ LValue [] "bar")
+      (LValueSymbol "foo" (RExp . ExpNum <$> [1, 2]))
+      (RLValue $ LValueSymbol "bar" [])
       (Span 0 0)
 
   step "Assign self"
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
-    mkStmtAssign (LValue [] "foo") (RLValue $ LValue [] "foo") (Span 0 0)
+    mkStmtAssign (LValueSymbol "foo" []) (RLValue $ LValueSymbol "foo" []) (Span 0 0)
 
   step "Type mismatch"
   gAssertError $ do
     doVarDeclare "foo" TypeString [5, 10] (Span 0 0)
     mkStmtAssign
-      (LValue (RExp . ExpNum <$> [1, 2]) "foo")
+      (LValueSymbol "foo" (RExp . ExpNum <$> [1, 2]))
       (RExp $ ExpNum 10)
       (Span 0 0)
 
@@ -186,87 +186,87 @@ test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
   gAssertError $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     doVarDeclare "bar" TypeInt [5, 10] (Span 0 0)
-    mkStmtAssign (LValue [] "foo") (RLValue $ LValue [] "bar") (Span 0 0)
+    mkStmtAssign (LValueSymbol "foo" []) (RLValue $ LValueSymbol "bar" []) (Span 0 0)
 
 test_stmtRead :: TestTree
 test_stmtRead = testCaseSteps "StmtRead" $ \step -> do
   step "Read Int"
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
-    mkStmtRead $ SpanW (LValue (RExp . ExpNum <$> [0, 1]) "foo") (Span 0 0)
+    mkStmtRead $ SpanW (LValueSymbol "foo" (RExp . ExpNum <$> [0, 1])) (Span 0 0)
 
   step "Read String"
   gAssertRight $ do
     doVarDeclare "foo" TypeString [5, 10] (Span 0 0)
-    mkStmtRead $ SpanW (LValue (RExp . ExpNum <$> [0, 1]) "foo") (Span 0 0)
+    mkStmtRead $ SpanW (LValueSymbol "foo" (RExp . ExpNum <$> [0, 1])) (Span 0 0)
 
   step "Read bool"
   gAssertError $ do
     doVarDeclare "foo" TypeBool [5, 10] (Span 0 0)
-    mkStmtRead $ SpanW (LValue [] "foo") (Span 0 0)
+    mkStmtRead $ SpanW (LValueSymbol "foo" []) (Span 0 0)
 
   step "Read array"
   gAssertError $ do
     doVarDeclare "foo" TypeInt [1] (Span 0 0)
-    mkStmtRead $ SpanW (LValue [] "foo") (Span 0 0)
+    mkStmtRead $ SpanW (LValueSymbol "foo" []) (Span 0 0)
 
 test_stmtWrite :: TestTree
 test_stmtWrite = testCaseSteps "StmtWrite" $ \step -> do
   step "Write Int"
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
-    mkStmtWrite $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
+    mkStmtWrite $ SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)
 
   step "Write String"
   gAssertRight $ do
     doVarDeclare "foo" TypeString [] (Span 0 0)
-    mkStmtWrite $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
+    mkStmtWrite $ SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)
 
   step "Write Bool"
   gAssertError $ do
     doVarDeclare "foo" TypeBool [] (Span 0 0)
-    mkStmtWrite $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
+    mkStmtWrite $ SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)
 
   step "Write Array"
   gAssertError $ do
     doVarDeclare "foo" TypeInt [1] (Span 0 0)
-    mkStmtWrite $ SpanW (RLValue $ LValue [] "foo") (Span 0 0)
+    mkStmtWrite $ SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)
 
 test_stmtIf :: TestTree
 test_stmtIf = testCaseSteps "StmtIf" $ \step -> do
   step "If Bool"
   gAssertRight $ do
     doVarDeclare "foo" TypeBool [] (Span 0 0)
-    mkStmtIf (SpanW (RLValue $ LValue [] "foo") (Span 0 0)) []
+    mkStmtIf (SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)) []
 
   step "If non Bool"
   gAssertError $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
-    mkStmtIf (SpanW (RLValue $ LValue [] "foo") (Span 0 0)) []
+    mkStmtIf (SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)) []
 
 test_stmtIfElse :: TestTree
 test_stmtIfElse = testCaseSteps "StmtIfElse" $ \step -> do
   step "IfElse Bool"
   gAssertRight $ do
     doVarDeclare "foo" TypeBool [] (Span 0 0)
-    mkStmtIfElse (SpanW (RLValue $ LValue [] "foo") (Span 0 0)) [] []
+    mkStmtIfElse (SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)) [] []
 
   step "IfElse non Bool"
   gAssertError $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
-    mkStmtIfElse (SpanW (RLValue $ LValue [] "foo") (Span 0 0)) [] []
+    mkStmtIfElse (SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)) [] []
 
 test_stmtWhile :: TestTree
 test_stmtWhile = testCaseSteps "StmtWhile" $ \step -> do
   step "While Bool"
   gAssertRight $ do
     doVarDeclare "foo" TypeBool [] (Span 0 0)
-    mkStmtWhile (SpanW (RLValue $ LValue [] "foo") (Span 0 0)) []
+    mkStmtWhile (SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)) []
 
   step "While non Bool"
   gAssertError $ do
     doVarDeclare "foo" TypeString [] (Span 0 0)
-    mkStmtWhile (SpanW (RLValue $ LValue [] "foo") (Span 0 0)) []
+    mkStmtWhile (SpanW (RLValue $ LValueSymbol "foo" []) (Span 0 0)) []
 
 test_stmtBreak :: TestTree
 test_stmtBreak = testCaseSteps "StmtBreak" $ \step -> do
@@ -483,7 +483,7 @@ test_mkExpFuncCall = testCaseSteps "mkExpFuncCall" $ \step -> do
     doVarDeclare "bar" TypeInt [] (Span 0 0)
     doFuncDeclare TypeInt "foo" [] (Span 0 0)
     exp    <- mkExpFuncCall "foo" [] (Span 0 0)
-    lValue <- mkLValue (spanW "bar") []
+    lValue <- mkLValueSymbol (spanW "bar") []
     mkStmtAssign lValue exp (Span 0 0)
 
   return ()

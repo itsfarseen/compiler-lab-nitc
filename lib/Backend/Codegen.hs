@@ -474,8 +474,8 @@ execStmtAlloc :: G.StmtAlloc -> Codegen ()
 execStmtAlloc stmt = do
   withSaveRegs $ \retReg -> do
     let G.MkStmtAlloc lValue    = stmt
-    let G.LValue _indices ident = lValue
-    G.Type2 _dims type1 <- getSymbolType ident
+    (_, type_) <- getLValueLocInReg1 lValue
+    let G.Type2 _dims type1 = type_
     size                <- case type1 of
       G.TypeUser typeName -> do
         userType <- getUserType typeName
@@ -501,8 +501,7 @@ execStmtAlloc stmt = do
       , XSM_POP t1 -- arg1
       ]
     reg <- getLValueLocInReg lValue
-    appendCode 
-      [XSM_MOV_IndDst reg retReg]
+    appendCode [XSM_MOV_IndDst reg retReg]
     return ((), True)
 
 
@@ -537,28 +536,43 @@ execStmtPoke stmt = do
   appendCode [XSM_MOV_IndDst dstReg srcReg]
 
 getLValueLocInReg :: G.LValue -> Codegen Reg
-getLValueLocInReg lValue = do
-  let (G.LValue indices ident) = lValue
-  (G.Type2 dims _) <- getSymbolType ident
-  (reg, _)         <- getLValueLocInReg' dims indices ident
-  return reg
- where
-  getLValueLocInReg' :: [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
-  getLValueLocInReg' dims indices symName = case (dims, indices) of
-    ([], []) -> do
-      reg <- getSymbolLocInReg symName
-      return (reg, 1)
-    ([]    , _ : _) -> error "Codegen bug: Too many indices "
-    (d : ds, []   ) -> do
-      (reg, innerSize) <- getLValueLocInReg' ds indices symName
-      return (reg, innerSize * d)
-    (d : ds, i : is) -> do
-      (reg, innerSize) <- getLValueLocInReg' ds is symName
-      rhs              <- getRValueInReg i
-      appendCode [XSM_MUL_I rhs innerSize]
-      appendCode [XSM_ADD reg rhs]
-      releaseReg rhs
-      return (reg, innerSize * d)
+getLValueLocInReg a = fst <$> getLValueLocInReg1 a
+
+getLValueLocInReg1 :: G.LValue -> Codegen (Reg, G.Type2)
+getLValueLocInReg1 (G.LValueSymbol ident indices) = do
+  type_@(G.Type2 dims _) <- getSymbolType ident
+  baseReg                    <- getSymbolLocInReg ident
+  (reg, _)               <- getLValueLocInReg' baseReg dims indices ident
+  return (reg, type_)
+getLValueLocInReg1 (G.LValueField lValue ident indices) = do
+  (baseReg, baseType) <- getLValueLocInReg1 lValue
+  userType            <- case baseType of
+    G.Type2 [] (G.TypeUser utName_) ->
+      fromJust <$> gets (\s -> find (\t -> utName t == utName_) (userTypes s))
+    _ -> error "Unreachable"
+  let
+    sym = fromJust $ find (\s -> symName s == ident) (utFields userType)
+    type_@(G.Type2 dims _) = symType sym
+  appendCode [XSM_ADD_I baseReg (symRelLoc sym)]
+  (reg, _) <- getLValueLocInReg' baseReg dims indices ident
+  return (reg, type_)
+
+
+getLValueLocInReg' :: Reg -> [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
+getLValueLocInReg' baseReg dims indices symName = case (dims, indices) of
+  ([], []) -> do
+    return (baseReg, 1)
+  ([]    , _ : _) -> error "Codegen bug: Too many indices "
+  (d : ds, []   ) -> do
+    (reg, innerSize) <- getLValueLocInReg' baseReg ds indices symName
+    return (reg, innerSize * d)
+  (d : ds, i : is) -> do
+    (reg, innerSize) <- getLValueLocInReg' baseReg ds is symName
+    rhs              <- getRValueInReg i
+    appendCode [XSM_MUL_I rhs innerSize]
+    appendCode [XSM_ADD reg rhs]
+    releaseReg rhs
+    return (reg, innerSize * d)
 
 backupRegs :: [Reg] -> Codegen ()
 backupRegs regs = mapM_ (\reg -> appendCode [XSM_PUSH reg]) regs

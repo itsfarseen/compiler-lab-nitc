@@ -126,9 +126,8 @@ data StmtPoke =
   deriving (Show, Eq)
 
 data LValue
-  = LValue
-      [RValue] -- Indices, empty if simple ident
-      String
+  = LValueSymbol String [RValue]
+  | LValueField LValue String [RValue]
   deriving (Show, Eq)
 
 data RValue
@@ -379,8 +378,8 @@ mkStmtPoke rValue1SW rValue2SW span = do
 
 
 
-mkLValue :: GrammarM m => SpanW String -> [SpanW RValue] -> m LValue
-mkLValue (SpanW identName identSpan) indices = do
+mkLValueSymbol :: GrammarM m => SpanW String -> [SpanW RValue] -> m LValue
+mkLValueSymbol (SpanW identName identSpan) indices = do
   sym <- symLookup identName >>= \case
     Nothing  -> gThrowError $ errIdentifierNotDeclared identName identSpan
     Just sym -> return sym
@@ -393,7 +392,35 @@ mkLValue (SpanW identName identSpan) indices = do
       return $ index
     )
     indices
-  return $ LValue indices' identName
+  return $ LValueSymbol identName indices'
+
+mkLValueField
+  :: GrammarM m => LValue -> SpanW String -> [SpanW RValue] -> m LValue
+mkLValueField lValue (SpanW fieldName fieldNameSpan) indices = do
+  utName <- lValueType lValue >>= getUserTypeName
+  sym    <- fieldLookup utName fieldName >>= \case
+    Nothing ->
+      gThrowError $ errIdentifierNotDeclared fieldName fieldNameSpan -- TODO Better error
+    Just sym -> return sym
+  let Type2 dims _ = symType sym
+  unless (length indices <= length dims)
+    $ gThrowError (Error.customError "Too much indices" fieldNameSpan) -- TODO Better error
+  indices' <- mapM
+    (\(SpanW index indexSpan) -> do
+      typeCheck index [Type2 [] TypeInt] indexSpan
+      return $ index
+    )
+    indices
+  return $ LValueField lValue fieldName indices'
+ where
+  getUserTypeName typ = case typ of
+    Type2 [] (TypeUser utName) -> return utName
+    Type2 _  _                 -> gThrowError
+      (Error.customError
+        ("Cannot find field in type: " ++ (show typ))
+        fieldNameSpan
+      ) -- TODO Better error
+
 
 mkExpArithmetic
   :: GrammarM m => SpanW RValue -> OpArithmetic -> SpanW RValue -> m Exp
@@ -574,8 +601,7 @@ mkType1 name' =
     "bool" -> return TypeBool
     "any"  -> return TypeAny
     _      -> do
-      gsGets ((find (\t -> utName t == name)) . gsUserTypes)
-        >>= throwTypeDoesnotExist name span
+      userTypeLookup name >>= throwTypeDoesnotExist name span
       return $ TypeUser name
  where
   throwTypeDoesnotExist name span maybeType = case maybeType of
@@ -609,16 +635,35 @@ mkExpPeek rValueSW = do
   return $ RPeek rValue
 -- Helper Functions
 
-lValueType :: GrammarM m => LValue -> m Type2
-lValueType (LValue indices identName) = do
-  (Type2 dims primType) <- symType . fromJust <$> symLookup identName
 
-  let dims' = drop (length indices) dims
+lValueType :: GrammarM m => LValue -> m Type2
+lValueType (LValueSymbol identName indices) = do
+  sym <- fromJust <$> symLookup identName
+  let (Type2 dims primType) = symType sym
+  let dims'                 = drop (length indices) dims
+  return $ Type2 dims' primType
+lValueType (LValueField lValue identName indices) = do
+  parentType <- lValueType lValue
+  let
+    utName = case parentType of
+      Type2 [] (TypeUser utName) -> utName
+      _                          -> error $ "Unreachable"
+  sym <- fromJust <$> fieldLookup utName identName
+  let (Type2 dims primType) = symType sym
+  let dims'                 = drop (length indices) dims
   return $ Type2 dims' primType
 
 lValueDeclSpan :: GrammarM m => LValue -> m Span
-lValueDeclSpan (LValue _ identName) = do
+lValueDeclSpan (LValueSymbol identName _) = do
   symDeclSpan . fromJust <$> symLookup identName
+lValueDeclSpan (LValueField lValue identName _) = do
+  parentType <- lValueType lValue
+  let
+    utName = case parentType of
+      Type2 [] (TypeUser utName) -> utName
+      _                          -> error $ "Unreachable"
+  sym <- fromJust <$> fieldLookup utName identName
+  return $ symDeclSpan sym
 
 rValueType :: GrammarM m => RValue -> m Type2
 rValueType (RLValue v  ) = lValueType v
@@ -676,6 +721,11 @@ symLookup :: GrammarM m => String -> m (Maybe Symbol)
 symLookup name =
   gsGets $ (find $ \s -> symName s == name) . concat . gsSymbolStack
 
+fieldLookup :: GrammarM m => String -> String -> m (Maybe Symbol)
+fieldLookup utName name = do
+  userType <- fromJust <$> userTypeLookup utName
+  return $ (find $ \s -> symName s == name) (utFields userType)
+
 symInsert :: GrammarM m => Symbol -> m ()
 symInsert symbol = gsModify $ \gs ->
   let
@@ -686,6 +736,10 @@ symInsert symbol = gsModify $ \gs ->
 
 funcLookup :: GrammarM m => String -> m (Maybe Func)
 funcLookup name = gsGets $ (find $ \f -> funcName f == name) . gsFuncs
+
+userTypeLookup :: GrammarM m => String -> m (Maybe UserType)
+userTypeLookup name =
+  gsGets ((find (\t -> utName t == name)) . gsUserTypes)
 
 funcName :: Func -> String
 funcName (FuncDeclared FuncDecl { fDeclName }) = fDeclName
