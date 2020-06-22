@@ -497,6 +497,7 @@ mkType1 name' =
     "int"  -> return TypeInt
     "str"  -> return TypeString
     "bool" -> return TypeBool
+    "any" -> return TypeAny
     _      -> do
       gsGets ((find (\t -> utName t == name)) . gsUserTypes)
         >>= throwTypeDoesnotExist name span
