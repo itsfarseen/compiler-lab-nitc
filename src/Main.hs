@@ -1,6 +1,5 @@
 module Main where
 
-import Data.Functor ((<&>))
 import Control.Monad.State
 import Control.Monad.Except (ExceptT, runExceptT, liftEither)
 import System.Environment
@@ -21,34 +20,22 @@ prompt text = do
   hFlush stdout
   getLine
 
-frontend
-  :: Frontend ([Grammar.FuncDef], [Grammar.Symbol], [Grammar.UserType])
-frontend = do
-  Grammar.Program symbols funcs userTypes <- Parser.parse
-  return (funcs, symbols, userTypes)
+frontend :: Frontend Grammar.Program
+frontend = Parser.parse
 
 
-backend :: CodeOutputMode -> Codegen.Codegen String
-backend mode = do
-  execSetupGlobalSymtab
-  execCallMainFunc
-  execFuncDefs
-  code <- case mode of
-    CodeOutputTranslated -> do
-      code <- getCodeTranslated
-      return $ map toString code
-    CodeOutputTranslatedWithAddress -> do
-      code <- getCodeTranslated
-      let codeNumbered = zip [codeStartAddr, codeStartAddr + 2 ..] code
-      return $ map (\(i, c) -> (show i) ++ ":\t" ++ (show c)) codeNumbered
-    CodeOutputUntranslated -> do
-      codeLabelled <- getCodeLabelled
-      return $ map (\(i, c) -> (show i) ++ ":\t" ++ (show c)) codeLabelled
-  return $ unlines (xexeHeader ++ code)
+backend :: CodeOutputMode -> Grammar.Program -> String
+backend mode program =
+  let
+    code = case mode of
+      CodeOutputTranslated   -> map toString (compileXEXE program)
+      CodeOutputUntranslated -> map
+        (\(i, c) -> (show i) ++ ":\t" ++ (show c))
+        (compileXEXEUntranslated program)
+  in unlines (xexeHeader ++ code)
 
 data CodeOutputMode
   = CodeOutputTranslated
-  | CodeOutputTranslatedWithAddress
   | CodeOutputUntranslated
   deriving (Eq)
 
@@ -58,7 +45,6 @@ main = do
   let
     (codeOutputMode, args) = case args_ of
       ("-u" : args') -> (CodeOutputUntranslated, args')
-      ("-n" : args') -> (CodeOutputTranslatedWithAddress, args')
       _              -> (CodeOutputTranslated, args_)
 
   (inputFile, outputFile) <- case args of
@@ -69,12 +55,10 @@ main = do
       exitFailure
   input <- readFile inputFile
   handleError input inputFile $ do
-    (funcs, symbols, userTypes) <- liftEither $ Frontend.runFrontend
+    program <- liftEither $ Frontend.runFrontend
       (Frontend.initData input Grammar.gsInit)
       frontend
-    output <- liftEither $ Codegen.runCodegen
-      (backend codeOutputMode)
-      (initCodegenState symbols funcs userTypes)
+    let output = backend codeOutputMode program
     liftIO $ writeFile outputFile output
  where
   handleError :: String -> String -> ExceptT Error IO a -> IO ()
