@@ -56,6 +56,7 @@ $sq_bracket_close = \]
 @continue    = "continue"
 @return      = "return"
 @type        = "type"
+@syscall     = "syscall"
 
 @number      = [0-9]+
 @strlit      = \"[^\"]*\"
@@ -106,6 +107,7 @@ tokens :-
     @continue    {token TokenContinue}
     @return      {token TokenReturn}
     @type        {token TokenType}
+    @syscall     {token TokenSyscall}
 
     @number      {tokenInt   TokenNumber}
     @strlit      {tokenStr   TokenStrLit}

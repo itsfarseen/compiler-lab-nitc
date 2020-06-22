@@ -61,6 +61,7 @@ data Stmt
   | StmtContinue StmtContinue
   | StmtRValue StmtRValue -- For function calls which is both an RValue and Statement
   | StmtReturn StmtReturn
+  | StmtSyscall StmtSyscall
   deriving (Show, Eq)
 
 data StmtAssign
@@ -97,6 +98,10 @@ data StmtContinue
 
 data StmtReturn =
   MkStmtReturn RValue
+  deriving (Show, Eq)
+
+data StmtSyscall =
+  MkStmtSyscall Int Int RValue RValue RValue
   deriving (Show, Eq)
 
 data StmtRValue =
@@ -300,6 +305,10 @@ mkStmtReturn rValue span = do
     $ gThrowError --
     $ errTypeMismatch retType (fDeclSpan funcDecl) rValueType span
   return $ MkStmtReturn rValue
+
+mkStmtSyscall :: GrammarM m => SpanW Int -> SpanW Int -> SpanW RValue -> SpanW RValue -> SpanW RValue -> Span -> m StmtSyscall
+mkStmtSyscall intNum callNum arg1 arg2 arg3 _span = do
+  return $ MkStmtSyscall (spanWVal intNum) (spanWVal callNum) (spanWVal arg1) (spanWVal arg2) (spanWVal arg3)
 
 mkLValue :: GrammarM m => SpanW String -> [SpanW RValue] -> m LValue
 mkLValue (SpanW identName identSpan) indices = do

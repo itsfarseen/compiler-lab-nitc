@@ -72,7 +72,8 @@ import Debug.Trace
     continue {TokenContinue  _ }
     return   {TokenReturn    _ }
 
-    type     {TokenType    _ }
+    type     {TokenType     _ }
+    syscall  {TokenSyscall  _ }
 
 %nonassoc '='
 %left '&&' '||'
@@ -117,7 +118,8 @@ Stmt:
     | StmtBreak         { [StmtBreak $1] }
     | StmtContinue      { [StmtContinue $1] }
     | StmtReturn        { [StmtReturn $1] }
-    | StmtRValue        { [StmtRValue $1]}
+    | StmtRValue        { [StmtRValue $1] }
+    | StmtSyscall       { [StmtSyscall $1] }
     | Stmt ';'          {$1}
 
 DoVarDeclare :: {()}
@@ -201,6 +203,11 @@ StmtRValue:
 StmtReturn :: {StmtReturn}
 StmtReturn:
       return RValue ';'      {% mkStmtReturn (spanWVal $2) (getSpan $2) }
+
+StmtSyscall :: {StmtSyscall}
+StmtSyscall:
+      syscall '(' number ',' number ',' RValue ',' RValue ',' RValue ')' ';'
+                             {% mkStmtSyscall $3 $5 $7 $9 $11 (getSpanBwn $1 $13) }
 
 FunctionArg :: {SpanW (String, Type1)}
 FunctionArg:
@@ -304,6 +311,7 @@ FieldList :: {[SpanW (String, Type2)]}
 FieldList:
     Field               {$1}
   | Field FieldList     {$1 ++ $2}
+
 
 
 {

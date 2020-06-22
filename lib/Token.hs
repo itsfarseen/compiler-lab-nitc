@@ -44,6 +44,7 @@ data Token
   | TokenContinue Span
   | TokenReturn Span
   | TokenType Span
+  | TokenSyscall Span
   -- Constants, Identifier
   | TokenNumber (SpanW Int)
   | TokenStrLit (SpanW String)
@@ -94,6 +95,7 @@ instance HasSpan Token where
     TokenContinue       span           -> span
     TokenReturn         span           -> span
     TokenType           span           -> span
+    TokenSyscall        span           -> span
     -- Constants, Identifier
     TokenNumber         (SpanW _ span) -> span
     TokenStrLit         (SpanW _ span) -> span
