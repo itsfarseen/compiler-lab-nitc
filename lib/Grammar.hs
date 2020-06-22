@@ -437,7 +437,7 @@ mkExpRelational (SpanW r1 span1) op (SpanW r2 span2) = do
 
   dataType1 <- rValueType r1
   dataType2 <- rValueType r2
-  unless (dataType1 == dataType2)
+  unless (dataType1 == Type2 [] TypeAny || dataType2 == Type2 [] TypeAny || dataType1 == dataType2)
     $ gThrowError --
     $ errTypeMismatch dataType1 span1 dataType2 span2
 
@@ -550,7 +550,7 @@ mkExpFuncCall funcName args span = do
           do
             argType <- rValueType arg
             let (Type2 dims argPrimType) = argType
-            unless (length dims == 0 && argPrimType == expectedType)
+            unless (length dims == 0 && (argPrimType == expectedType || argPrimType == TypeAny || expectedType == TypeAny))
               $ gThrowError
               $ errTypeMismatch
                   argType
