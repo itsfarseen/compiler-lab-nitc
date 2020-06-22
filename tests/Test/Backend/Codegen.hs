@@ -14,6 +14,7 @@ import Test.Tasty
 import Test.Tasty.HUnit
 import qualified Backend.Simulator as Simulator
 import qualified Grammar as G
+import Test.LibraryUtils (loadLibrary)
 
 span0 :: Span
 span0 = Span 0 0
@@ -33,7 +34,10 @@ cRun3 codegenM syms symsLen funcs = runCodegen
   (execSetupGlobalSymtab >> codegenM >>= \a -> (, a) <$> getCodeTranslated)
   (initCodegenStateInternal syms symsLen funcs [])
 
-
+runSimulator :: [XSMInstr] -> [String] -> IO Simulator.Machine
+runSimulator code stdin = do
+  library <- loadLibrary
+  return $ Simulator.run (Simulator.initWithStdin stdin code library)
 
 tests :: TestTree
 tests = testGroup
@@ -83,7 +87,7 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
             ]
             []
 
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getStdout simulator @?= ["Hello World!"]
   step "Simple 2"
   let
@@ -118,7 +122,7 @@ test_simpleMain = testCaseSteps "Simple main function" $ \step -> do
                 }
             ]
             []
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
 
   Simulator.getMemory 4096 simulator @?= "121"
 
@@ -135,7 +139,7 @@ test_execStmtAssign = testCaseSteps "execStmtAssign" $ \step -> do
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
       []
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getMemory 4096 simulator @?= "10"
   step "Assign self"
   let
@@ -152,7 +156,7 @@ test_execStmtAssign = testCaseSteps "execStmtAssign" $ \step -> do
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
       []
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getMemory 4096 simulator @?= "10"
 
 test_execStmtRead :: TestTree
@@ -164,7 +168,7 @@ test_execStmtRead = testCaseSteps "execStmtRead" $ \step -> do
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
       []
-  let simulator = Simulator.run (Simulator.initWithStdin ["10"] code)
+  simulator <- runSimulator code ["10"]
   Simulator.getMemory 4096 simulator @?= "10"
   step "Double read"
   let
@@ -176,8 +180,7 @@ test_execStmtRead = testCaseSteps "execStmtRead" $ \step -> do
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       1
       []
-  let
-    simulator = Simulator.run $ Simulator.initWithStdin ["10", "555"] code
+  simulator <- runSimulator code ["10", "555"]
   Simulator.getMemory 4096 simulator @?= "555"
 
 test_execStmtWrite :: TestTree
@@ -192,8 +195,7 @@ test_execStmtWrite = testCaseSteps "execStmtWrite" $ \step -> do
       []
       0
       []
-  let
-    simulator = Simulator.run (Simulator.initWithStdin ["10", "555"] code)
+  simulator <- runSimulator code ["10", "555"]
   Simulator.getStdout simulator @?= ["100", "ASD"]
 
 test_execStmtIf :: TestTree
@@ -220,7 +222,7 @@ test_execStmtIf = testCaseSteps "execStmtIf" $ \step -> do
       []
       0
       []
-  let simulator = Simulator.run (Simulator.initWithStdin [] code)
+  simulator <- runSimulator code []
   Simulator.getStdout simulator @?= ["100", "200", "300", "555", "666"]
   step "If stmt false"
   let
@@ -244,7 +246,7 @@ test_execStmtIf = testCaseSteps "execStmtIf" $ \step -> do
       []
       0
       []
-  let simulator = Simulator.run (Simulator.initWithStdin [] code)
+  simulator <- runSimulator code []
   Simulator.getStdout simulator @?= ["555", "666"]
 
 test_execStmtIfElse :: TestTree
@@ -277,7 +279,7 @@ test_execStmtIfElse = testCaseSteps "execStmtIfElse" $ \step -> do
       []
       0
       []
-  let simulator = Simulator.run (Simulator.initWithStdin [] code)
+  simulator <- runSimulator code []
   Simulator.getStdout simulator @?= ["100", "200", "300", "555", "666"]
   step "cond false"
   let
@@ -307,7 +309,7 @@ test_execStmtIfElse = testCaseSteps "execStmtIfElse" $ \step -> do
       []
       0
       []
-  let simulator = Simulator.run (Simulator.initWithStdin [] code)
+  simulator <- runSimulator code []
   Simulator.getStdout simulator @?= ["500", "600", "700", "555", "666"]
 
 test_execStmtWhile :: TestTree
@@ -339,7 +341,7 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       0
       []
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getMemory 4096 simulator @?= "10"
   Simulator.getStdout simulator
     @?= (take 10 $ repeat "loop")
@@ -371,7 +373,7 @@ test_execStmtWhile = testCaseSteps "execStmtWhile" $ \step -> do
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       0
       []
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getMemory 4096 simulator @?= "15"
   Simulator.getStdout simulator @?= ["foo", "bar"]
 
@@ -404,7 +406,7 @@ test_execStmtBreak = testCaseSteps "execStmtBreak" $ \_ -> do
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       0
       []
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getMemory 4096 simulator @?= "0"
   Simulator.getStdout simulator @?= ["foo", "bar"]
 
@@ -437,7 +439,7 @@ test_execStmtContinue = testCaseSteps "execStmtContinue" $ \_ -> do
       [Symbol "foo" (G.Type2 [] G.TypeInt) 0]
       0
       []
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getMemory 4096 simulator @?= "10"
   Simulator.getStdout simulator @?= ["foo", "bar"]
 
@@ -466,7 +468,7 @@ test_execFunctionCall = testCaseSteps "execFunctionCall" $ \step -> do
       ]
 
   -- mapM print code
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getStdout simulator @?= ["Hello World"]
 
   step "Without arguments - Return"
@@ -491,8 +493,8 @@ test_execFunctionCall = testCaseSteps "execFunctionCall" $ \step -> do
           }
       ]
 
-  let simulator = Simulator.run (Simulator.init code)
-  let rVal      = read @Int $ Simulator.getRegVal r simulator
+  simulator <- runSimulator code []
+  let rVal = read @Int $ Simulator.getRegVal r simulator
   rVal @?= 123
 
   step "With arguments"
@@ -525,8 +527,8 @@ test_execFunctionCall = testCaseSteps "execFunctionCall" $ \step -> do
           , funcLabel         = "F1"
           }
       ]
-  let simulator = Simulator.run (Simulator.init code)
-  let rVal      = read @Int $ Simulator.getRegVal r simulator
+  simulator <- runSimulator code []
+  let rVal = read @Int $ Simulator.getRegVal r simulator
   rVal @?= 123 - 444
 
 ----------------------------------------------------------------------------------------
@@ -547,9 +549,9 @@ test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
       2
       []
 
-  let simulator = Simulator.run (Simulator.init code)
-  let loc1      = read @Int $ Simulator.getRegVal r1 simulator
-  let loc2      = read @Int $ Simulator.getRegVal r2 simulator
+  simulator <- runSimulator code []
+  let loc1 = read @Int $ Simulator.getRegVal r1 simulator
+  let loc2 = read @Int $ Simulator.getRegVal r2 simulator
   loc1 @?= 4096
   loc2 @?= 4097
 
@@ -568,9 +570,9 @@ test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
       26
       []
 
-  let simulator = Simulator.run (Simulator.init code)
-  let loc       = read @Int $ (Simulator.getRegVal reg simulator)
-  let base      = read @Int $ (Simulator.getRegVal basereg simulator)
+  simulator <- runSimulator code []
+  let loc  = read @Int $ (Simulator.getRegVal reg simulator)
+  let base = read @Int $ (Simulator.getRegVal basereg simulator)
   base @?= 4096 + 6
   loc @?= base + 2 * 5 + 3
 
@@ -597,9 +599,9 @@ test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
       0
       []
 
-  let simulator = Simulator.run (Simulator.init code)
-  let r1Loc     = read @Int $ (Simulator.getRegVal r1 simulator)
-  let r2Loc     = read @Int $ (Simulator.getRegVal r2 simulator)
+  simulator <- runSimulator code []
+  let r1Loc = read @Int $ (Simulator.getRegVal r1 simulator)
+  let r2Loc = read @Int $ (Simulator.getRegVal r2 simulator)
   r1Loc @?= 4900 - 3
   r2Loc @?= 4900 - 2
 
@@ -647,6 +649,6 @@ test_Syscall = testCaseSteps "Syscall" $ \step -> do
       []
       0
       []
-  let simulator = Simulator.run (Simulator.init code)
+  simulator <- runSimulator code []
   Simulator.getStdout simulator @?= ["Hello"]
 

@@ -18,7 +18,7 @@ unit_simulator :: Assertion
 unit_simulator =
   let
     machine =
-      Simulator.init code
+      Simulator.init code []
         |> Simulator.setMemory 4096 "123"
         |> Simulator.setMemory 4097 "4098"
         |> Simulator.setMemory 4098 "234"
@@ -45,7 +45,7 @@ unit_simulator =
 -- brittany-disable-next-binding
 unit_simulator_loop :: Assertion
 unit_simulator_loop =
-  let machine = Simulator.init code |> Simulator.run
+  let machine = Simulator.init code [] |> Simulator.run
       code =
           [ {-2056-} XSM_MOV_Int R1 10 -- n
           , {-2058-} XSM_MOV_Int R2 1  -- i

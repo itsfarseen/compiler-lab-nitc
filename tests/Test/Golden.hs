@@ -15,6 +15,7 @@ import qualified Backend.Codegen as Codegen
 import Control.Monad.Except
 import Error (Error, panicError)
 import Data.ByteString.Lazy.UTF8 (fromString)
+import Test.LibraryUtils (loadLibrary)
 
 main :: IO TestTree
 main = do
@@ -39,6 +40,7 @@ main = do
 
 runGoldenTest :: FilePath -> FilePath -> IO String
 runGoldenTest explFile stdinFile = do
+  library <- loadLibrary
   expl    <- readFile explFile
   stdin   <- lines <$> readFile stdinFile
   program <- handleError expl explFile $ do
@@ -47,7 +49,7 @@ runGoldenTest explFile stdinFile = do
       do
         Parser.parse
   let code      = Codegen.compileXEXE program
-  let simulator = Simulator.run (Simulator.initWithStdin stdin code)
+  let simulator = Simulator.run (Simulator.initWithStdin stdin code library)
   let stdout    = unlines $ Simulator.getStdout simulator
   return stdout
 

@@ -262,9 +262,9 @@ RValue:
     | ident '(' RValues ')'
                         {% mkExpFuncCall (spanWVal $1) $3 (getSpanBwn $1 $4)
                                             <&> flip SpanW (getSpanBwn $1 $4) }
-    | syscall '(' number ',' number ',' RValue ',' RValue ',' RValue ')' ';'
-                        {% mkExpSyscall $3 $5 $7 $9 $11 (getSpanBwn $1 $13) 
-                                            <&> flip SpanW (getSpanBwn $1 $13) }
+    | syscall '(' number ',' number ',' RValue ',' RValue ',' RValue ')' 
+                        {% mkExpSyscall $3 $5 $7 $9 $11 (getSpanBwn $1 $12) 
+                                            <&> flip SpanW (getSpanBwn $1 $12) }
 
 RValues :: {[SpanW RValue]}
 RValues:
@@ -316,7 +316,7 @@ FieldList:
 dbgs s v = trace (s ++ ": " ++ show v) v
 
 parseError :: Token -> Frontend a
-parseError token = throwError $ Error.customError ("Parsing error 2: " ++ (show token)) $ getSpan token
+parseError token = throwError $ Error.customError ("Unexpected Token: " ++ (show token)) $ getSpan token
 
 fst4 (a,b,c,d) = a
 snd4 (a,b,c,d) = b

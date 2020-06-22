@@ -273,7 +273,7 @@ execCallMainFunc = do
   let
     mainFunc = case find (\f -> funcName f == "main") funcs of
       Just f  -> f
-      Nothing -> error "main function not defined"
+      Nothing -> error $ "main function not defined" ++ (show $ map funcName funcs)
   appendCode [XSM_UTJ $ XSM_UTJ_CALL (funcLabel mainFunc)]
   appendCode [XSM_INT 10]
 
@@ -330,14 +330,14 @@ execStmtRead stmt = do
   t1           <- getFreeReg
   let
     code =
-      [ XSM_MOV_Int t1 7 -- arg1: Call Number (Read = 7)
+      [ XSM_MOV_Str t1 "Read" -- arg1: Function Name
       , XSM_PUSH t1
       , XSM_MOV_Int t1 (-1) -- arg2: File Pointer (Stdin = -1)
       , XSM_PUSH t1
       , XSM_PUSH lValueLocReg -- arg3: Buffer loc
       , XSM_PUSH R0 -- arg4: unused
       , XSM_PUSH R0 -- arg5: unused
-      , XSM_INT 6 -- Int 6 = Read System Call
+      , XSM_CALL 0 -- call library
       , XSM_POP t1 -- arg5
       , XSM_POP t1 -- arg4
       , XSM_POP t1 -- arg3
@@ -360,14 +360,14 @@ execStmtWrite stmt = do
   t1  <- getFreeReg
   let
     code =
-      [ XSM_MOV_Int t1 5 -- arg1: Call Number (Write = 5)
+      [ XSM_MOV_Str t1 "Write" -- arg1: Call Number (Write = 5)
       , XSM_PUSH t1
       , XSM_MOV_Int t1 (-2) -- arg2: File Pointer (Stdout = -2)
       , XSM_PUSH t1
       , XSM_PUSH reg -- arg3: data to be written
       , XSM_PUSH R0 -- arg4: unused
       , XSM_PUSH R0 -- arg5: unused
-      , XSM_INT 7 -- Int 7 = Write System Call
+      , XSM_CALL 0 -- call library
       , XSM_POP t1 -- arg5
       , XSM_POP t1 -- arg4
       , XSM_POP t1 -- arg3

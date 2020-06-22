@@ -1,0 +1,14 @@
+int library(str funcCode, any arg1, any arg2, any arg3) {
+    if(funcCode == "Read") then
+        syscall(6, 7, arg1, arg2, arg3);
+        return 0;
+    endif;
+    if(funcCode == "Write") then
+        syscall(7, 5, arg1, arg2, arg3);
+        return 0;
+    endif
+    if(funcCode == "Exit") then
+        syscall(10, 10, 0, 0, 0);
+        return 0;
+    endif
+}
