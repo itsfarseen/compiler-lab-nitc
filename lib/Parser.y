@@ -333,10 +333,13 @@ Type1 :: {SpanW Type1}
 Type1:
     ident               {% mkType1 $1 <&> flip SpanW (getSpan $1) }
 
+DoTypeDefineBegin:
+    type ident '{'      {% doTypeDefine $2 <&> flip SpanW (getSpanBwn $1 $3)}
+
 DoTypeDefine :: {()}
 DoTypeDefine:
-    type ident '{' FieldList '}'
-                        {% doTypeDefine (spanWVal $2) $4 (getSpanBwn $1 $2) }
+    DoTypeDefineBegin FieldList '}'
+                        {% (spanWVal $1) $2 (getSpanBwn $1 $3) }
 
 Field :: {[SpanW (String, Type2)]}
 Field:

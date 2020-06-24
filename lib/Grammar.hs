@@ -594,26 +594,39 @@ mkExpFuncCall funcName args span = do
 
 
 doTypeDefine
-  :: GrammarM m => String -> [SpanW (String, Type2)] -> Span -> m ()
-doTypeDefine name fields span = do
+  :: GrammarM m
+  => SpanW String
+  -> m ([SpanW (String, Type2)] -> Span -> m ())
+doTypeDefine (SpanW name nameSpan) = do
   gsGets ((find (\t -> utName t == name)) . gsUserTypes)
     >>= throwExistingType
   let
     userType =
-      UserType { utName = name, utFields = fields', utDeclSpan = span }
-    fields' = map
-      (\fieldSpanW ->
-        let
-          (symName, symType) = spanWVal fieldSpanW
-          symDeclSpan        = getSpan fieldSpanW
-        in Symbol { symName, symType, symDeclSpan }
-      )
-      fields
+      UserType { utName = name, utFields = [], utDeclSpan = nameSpan }
   gsModify (\gs -> gs { gsUserTypes = gsUserTypes gs ++ [userType] })
+  return $ \fields span -> do
+    let
+      userType =
+        UserType { utName = name, utFields = fields', utDeclSpan = span }
+      fields' = map
+        (\fieldSpanW ->
+          let
+            (symName, symType) = spanWVal fieldSpanW
+            symDeclSpan        = getSpan fieldSpanW
+          in Symbol { symName, symType, symDeclSpan }
+        )
+        fields
+    gsModify
+      (\gs -> gs
+        { gsUserTypes = map
+          (\ut -> if utName ut == name then userType else ut)
+          (gsUserTypes gs)
+        }
+      )
  where
   throwExistingType maybeType = case maybeType of
     Just userType ->
-      gThrowError $ errTypeRedeclared name (utDeclSpan userType) span
+      gThrowError $ errTypeRedeclared name (utDeclSpan userType) nameSpan
     Nothing -> return ()
 
 mkType1 :: GrammarM m => SpanW String -> m Type1
