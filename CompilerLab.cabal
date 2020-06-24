@@ -54,6 +54,7 @@ executable CompilerLab
     , mtl
     , unordered-containers
     , utf8-string
+    , safe
 
   build-tool-depends:
       alex:alex
@@ -109,6 +110,7 @@ test-suite test
     , unordered-containers
     , utf8-string
     , bytestring
+    , safe
 
   build-tool-depends:
       alex:alex
