@@ -4,7 +4,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE TupleSections #-}
-{-# LANGUAGE RecordWildCards #-}
+
 
 module Backend.Codegen where
 
@@ -12,11 +12,10 @@ import Backend.Instructions
 import Backend.Reg
 import Control.Monad.Except
 import Control.Monad.State.Strict
-import Data.List (find)
-import Data.List (sortOn)
-import Data.Maybe (fromJust)
+import Data.List (find, sortOn)
 import qualified Data.HashMap.Strict as HM
 import qualified Grammar as G
+import Safe
 
 
 -- import Debug.Trace
@@ -98,9 +97,9 @@ compileLibrary program =
       $ initCodegenState gSymbols funcs userTypes
  where
   checkLibraryProgram program@(G.Program gSymbols funcs _userTypes)
-    | length gSymbols > 0 = error "Global variables not allowed in library"
+    | not (null gSymbols) = error "Global variables not allowed in library"
     | length funcs > 1 = error "No extra functions allowed in library"
-    | G.fDefName (funcs !! 0) /= "library" = error
+    | G.fDefName (head funcs) /= "library" = error
       "Library main function should be named 'library'"
     | otherwise = program
 
@@ -153,17 +152,17 @@ buildSymbolTable symbols locBase =
       loc                               = snd prev
     in
       ( Symbol { symName, symType, symRelLoc = loc }
-      , loc + (dataTypeSize symType)
+      , loc + dataTypeSize symType
       )
   dataTypeSize (G.Type2 dims _) = product dims
 
 buildFuncsTable :: [G.FuncDef] -> Int -> [Func]
 buildFuncsTable funcs i = case funcs of
   []           -> []
-  (f : funcs') -> (toFunc f) : (buildFuncsTable funcs' (i + 1))
+  (f : funcs') -> toFunc f : buildFuncsTable funcs' (i + 1)
  where
   toFunc f = case f of
-    G.FuncDef { fDefName, fDefRetType, fDefBody, fDefArgsLen, fDefSyms }
+    G.FuncDef { G.fDefName, G.fDefRetType, G.fDefBody, G.fDefArgsLen, G.fDefSyms }
       -> let
            (args, localVars)     = splitAt fDefArgsLen fDefSyms
            args'                 = buildFuncArgsTable args (-3)
@@ -269,14 +268,14 @@ execSetupGlobalSymtab = do
 
 execCallMainFunc :: Codegen ()
 execCallMainFunc = do
-  funcs <- gets funcs
-  let
-    mainFunc = case find (\f -> funcName f == "main") funcs of
-      Just f -> f
-      Nothing ->
-        error $ "main function not defined" ++ (show $ map funcName funcs)
+  mainFunc <- findMain
   appendCode [XSM_UTJ $ XSM_UTJ_CALL (funcLabel mainFunc)]
   appendCode [XSM_INT 10]
+ where
+  findMain =
+    gets
+      $ findJustNote "main function not found" (\f -> funcName f == "main")
+      . funcs
 
 execFuncDefs :: Codegen ()
 execFuncDefs = do
@@ -327,51 +326,49 @@ execStmtAssign stmt = do
   return ()
 
 execStmtRead :: G.StmtRead -> Codegen ()
-execStmtRead stmt = do
-  withSaveRegs $ \_retReg -> do
-    let G.MkStmtRead lValue = stmt
-    lValueLocReg <- getLValueLocInReg lValue
-    t1           <- getFreeReg
-    appendCode
-      [ XSM_MOV_Str t1 "Read" -- arg1: Function Name
-      , XSM_PUSH t1
-      , XSM_MOV_Int t1 (-1) -- arg2: File Pointer (Stdin = -1)
-      , XSM_PUSH t1
-      , XSM_PUSH lValueLocReg -- arg3: Buffer loc
-      , XSM_PUSH R0 -- arg4: unused
-      , XSM_PUSH R0 -- arg5: unused
-      , XSM_CALL 0 -- call library
-      , XSM_POP t1 -- arg5
-      , XSM_POP t1 -- arg4
-      , XSM_POP t1 -- arg3
-      , XSM_POP t1 -- arg2
-      , XSM_POP t1 -- arg1
-      ]
-    return ((), True)
+execStmtRead stmt = withSaveRegs $ \_retReg -> do
+  let G.MkStmtRead lValue = stmt
+  lValueLocReg <- getLValueLocInReg lValue
+  t1           <- getFreeReg
+  appendCode
+    [ XSM_MOV_Str t1 "Read" -- arg1: Function Name
+    , XSM_PUSH t1
+    , XSM_MOV_Int t1 (-1) -- arg2: File Pointer (Stdin = -1)
+    , XSM_PUSH t1
+    , XSM_PUSH lValueLocReg -- arg3: Buffer loc
+    , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- arg5: unused
+    , XSM_CALL 0 -- call library
+    , XSM_POP t1 -- arg5
+    , XSM_POP t1 -- arg4
+    , XSM_POP t1 -- arg3
+    , XSM_POP t1 -- arg2
+    , XSM_POP t1 -- arg1
+    ]
+  return ((), True)
 
 
 execStmtWrite :: G.StmtWrite -> Codegen ()
-execStmtWrite stmt = do
-  withSaveRegs $ \_retReg -> do
-    let G.MkStmtWrite rValue = stmt
-    reg <- getRValueInReg rValue
-    t1  <- getFreeReg
-    appendCode
-      [ XSM_MOV_Str t1 "Write" -- arg1: Call Number (Write = 5)
-      , XSM_PUSH t1
-      , XSM_MOV_Int t1 (-2) -- arg2: File Pointer (Stdout = -2)
-      , XSM_PUSH t1
-      , XSM_PUSH reg -- arg3: data to be written
-      , XSM_PUSH R0 -- arg4: unused
-      , XSM_PUSH R0 -- arg5: unused
-      , XSM_CALL 0 -- call library
-      , XSM_POP t1 -- arg5
-      , XSM_POP t1 -- arg4
-      , XSM_POP t1 -- arg3
-      , XSM_POP t1 -- arg2
-      , XSM_POP t1 -- arg1
-      ]
-    return ((), True)
+execStmtWrite stmt = withSaveRegs $ \_retReg -> do
+  let G.MkStmtWrite rValue = stmt
+  reg <- getRValueInReg rValue
+  t1  <- getFreeReg
+  appendCode
+    [ XSM_MOV_Str t1 "Write" -- arg1: Call Number (Write = 5)
+    , XSM_PUSH t1
+    , XSM_MOV_Int t1 (-2) -- arg2: File Pointer (Stdout = -2)
+    , XSM_PUSH t1
+    , XSM_PUSH reg -- arg3: data to be written
+    , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- arg5: unused
+    , XSM_CALL 0 -- call library
+    , XSM_POP t1 -- arg5
+    , XSM_POP t1 -- arg4
+    , XSM_POP t1 -- arg3
+    , XSM_POP t1 -- arg2
+    , XSM_POP t1 -- arg1
+    ]
+  return ((), True)
 
 execStmtIf :: G.StmtIf -> Codegen ()
 execStmtIf stmt = do
@@ -451,82 +448,79 @@ execStmtRValue stmt = do
   releaseReg r1
 
 execStmtInitialize :: G.StmtInitialize -> Codegen ()
-execStmtInitialize _stmt = do
-  withSaveRegs $ \_retReg -> do
-    t1 <- getFreeReg
-    appendCode
-      [ XSM_MOV_Str t1 "Heapset" -- arg1: Function Name
-      , XSM_PUSH t1 -- arg1
-      , XSM_PUSH R0 -- arg2: unused
-      , XSM_PUSH R0 -- arg3: unused
-      , XSM_PUSH R0 -- arg4: unused
-      , XSM_PUSH R0 -- space for return value: unused
-      , XSM_CALL 0 -- call library
-      , XSM_POP t1 -- return value
-      , XSM_POP t1 -- arg4
-      , XSM_POP t1 -- arg3
-      , XSM_POP t1 -- arg2
-      , XSM_POP t1 -- arg1
-      ]
-    return ((), True)
+execStmtInitialize _stmt = withSaveRegs $ \_retReg -> do
+  t1 <- getFreeReg
+  appendCode
+    [ XSM_MOV_Str t1 "Heapset" -- arg1: Function Name
+    , XSM_PUSH t1 -- arg1
+    , XSM_PUSH R0 -- arg2: unused
+    , XSM_PUSH R0 -- arg3: unused
+    , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- space for return value: unused
+    , XSM_CALL 0 -- call library
+    , XSM_POP t1 -- return value
+    , XSM_POP t1 -- arg4
+    , XSM_POP t1 -- arg3
+    , XSM_POP t1 -- arg2
+    , XSM_POP t1 -- arg1
+    ]
+  return ((), True)
 
 execStmtAlloc :: G.StmtAlloc -> Codegen ()
-execStmtAlloc stmt = do
-  withSaveRegs $ \retReg -> do
-    let G.MkStmtAlloc lValue    = stmt
-    (_, type_) <- getLValueLocInReg1 lValue
-    let G.Type2 _dims type1 = type_
-    size                <- case type1 of
-      G.TypeUser typeName -> do
-        userType <- getUserType typeName
-        return $ utSize userType
-      _ ->
-        error
-          $  "Program bug: Can only allocate UserType. Got: "
-          ++ (show type1)
-    t1 <- getFreeReg
-    appendCode
-      [ XSM_MOV_Str t1 "Alloc" -- arg1: Function Name
-      , XSM_PUSH t1 -- arg1
-      , XSM_MOV_Int t1 size
-      , XSM_PUSH t1 -- arg2: size
-      , XSM_PUSH R0 -- arg3: unused
-      , XSM_PUSH R0 -- arg4: unused
-      , XSM_PUSH R0 -- space for return value
-      , XSM_CALL 0 -- call library
-      , XSM_POP retReg -- return value
-      , XSM_POP t1 -- arg4
-      , XSM_POP t1 -- arg3
-      , XSM_POP t1 -- arg2
-      , XSM_POP t1 -- arg1
-      ]
-    reg <- getLValueLocInReg lValue
-    appendCode [XSM_MOV_IndDst reg retReg]
-    return ((), True)
+execStmtAlloc stmt = withSaveRegs $ \retReg -> do
+  let G.MkStmtAlloc lValue = stmt
+  (_, type_) <- getLValueLocInReg1 lValue
+  let G.Type2 _dims type1 = type_
+  size <- case type1 of
+    G.TypeUser typeName -> do
+      userType <- getUserType typeName
+      return $ utSize userType
+    _ ->
+      error
+        $  "Program bug: Can only allocate UserType. Got: "
+        ++ (show type1)
+  t1 <- getFreeReg
+  appendCode
+    [ XSM_MOV_Str t1 "Alloc" -- arg1: Function Name
+    , XSM_PUSH t1 -- arg1
+    , XSM_MOV_Int t1 size
+    , XSM_PUSH t1 -- arg2: size
+    , XSM_PUSH R0 -- arg3: unused
+    , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- space for return value
+    , XSM_CALL 0 -- call library
+    , XSM_POP retReg -- return value
+    , XSM_POP t1 -- arg4
+    , XSM_POP t1 -- arg3
+    , XSM_POP t1 -- arg2
+    , XSM_POP t1 -- arg1
+    ]
+  reg <- getLValueLocInReg lValue
+  appendCode [XSM_MOV_IndDst reg retReg]
+  return ((), True)
 
 
 execStmtFree :: G.StmtFree -> Codegen ()
-execStmtFree stmt = do
-  withSaveRegs $ \_retReg -> do
-    let G.MkStmtFree lValue = stmt
-    reg <- getLValueLocInReg lValue
-    t1  <- getFreeReg
-    appendCode
-      [ XSM_MOV_Str t1 "Free" -- arg1: Function Name
-      , XSM_PUSH t1 -- arg1
-      , XSM_MOV_IndSrc t1 reg
-      , XSM_PUSH t1 -- arg2: address
-      , XSM_PUSH R0 -- arg3: unused
-      , XSM_PUSH R0 -- arg4: unused
-      , XSM_PUSH R0 -- space for return value
-      , XSM_CALL 0 -- call library
-      , XSM_POP t1 -- return value
-      , XSM_POP t1 -- arg4
-      , XSM_POP t1 -- arg3
-      , XSM_POP t1 -- arg2
-      , XSM_POP t1 -- arg1
-      ]
-    return ((), True)
+execStmtFree stmt = withSaveRegs $ \_retReg -> do
+  let G.MkStmtFree lValue = stmt
+  reg <- getLValueLocInReg lValue
+  t1  <- getFreeReg
+  appendCode
+    [ XSM_MOV_Str t1 "Free" -- arg1: Function Name
+    , XSM_PUSH t1 -- arg1
+    , XSM_MOV_IndSrc t1 reg
+    , XSM_PUSH t1 -- arg2: address
+    , XSM_PUSH R0 -- arg3: unused
+    , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- space for return value
+    , XSM_CALL 0 -- call library
+    , XSM_POP t1 -- return value
+    , XSM_POP t1 -- arg4
+    , XSM_POP t1 -- arg3
+    , XSM_POP t1 -- arg2
+    , XSM_POP t1 -- arg1
+    ]
+  return ((), True)
 
 execStmtPoke :: G.StmtPoke -> Codegen ()
 execStmtPoke stmt = do
@@ -541,27 +535,34 @@ getLValueLocInReg a = fst <$> getLValueLocInReg1 a
 getLValueLocInReg1 :: G.LValue -> Codegen (Reg, G.Type2)
 getLValueLocInReg1 (G.LValueSymbol ident indices) = do
   type_@(G.Type2 dims _) <- getSymbolType ident
-  baseReg                    <- getSymbolLocInReg ident
+  baseReg                <- getSymbolLocInReg ident
   (reg, _)               <- getLValueLocInReg' baseReg dims indices ident
   return (reg, type_)
 getLValueLocInReg1 (G.LValueField lValue ident indices) = do
   (baseReg, baseType) <- getLValueLocInReg1 lValue
   userType            <- case baseType of
-    G.Type2 [] (G.TypeUser utName_) ->
-      fromJust <$> gets (\s -> find (\t -> utName t == utName_) (userTypes s))
+    G.Type2 [] (G.TypeUser utName_) -> gets
+      ( findJustNote
+          "Codegen: Find UserType by name"
+          (\t -> utName t == utName_)
+      . userTypes
+      )
     _ -> error "Unreachable"
   let
-    sym = fromJust $ find (\s -> symName s == ident) (utFields userType)
+    sym = findJustNote
+      "Codegen: Find member field"
+      (\s -> symName s == ident)
+      (utFields userType)
     type_@(G.Type2 dims _) = symType sym
   appendCode [XSM_ADD_I baseReg (symRelLoc sym)]
   (reg, _) <- getLValueLocInReg' baseReg dims indices ident
   return (reg, type_)
 
 
-getLValueLocInReg' :: Reg -> [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
+getLValueLocInReg'
+  :: Reg -> [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
 getLValueLocInReg' baseReg dims indices symName = case (dims, indices) of
-  ([], []) -> do
-    return (baseReg, 1)
+  ([]    , []   ) -> return (baseReg, 1)
   ([]    , _ : _) -> error "Codegen bug: Too many indices "
   (d : ds, []   ) -> do
     (reg, innerSize) <- getLValueLocInReg' baseReg ds indices symName
@@ -629,34 +630,29 @@ getRValueInReg rValue = case rValue of
     r1 <- getFreeReg
     appendCode [XSM_POP r1]
     t <- getFreeReg
-    mapM_
-      (\_ -> do
-        appendCode [XSM_POP t]
-      )
-      args
+    mapM_ (\_ -> appendCode [XSM_POP t]) args
     releaseReg t
     return r1
-  G.RSyscall intNum callNum arg1 arg2 arg3 -> do
-    withSaveRegs $ \retReg -> do
-      r1 <- getRValueInReg arg1
-      r2 <- getRValueInReg arg2
-      r3 <- getRValueInReg arg3
-      t1 <- getFreeReg
-      appendCode
-        [ XSM_MOV_Int t1 callNum -- Call Number
-        , XSM_PUSH t1
-        , XSM_PUSH r1
-        , XSM_PUSH r2 -- arg2: data to be written
-        , XSM_PUSH r3 -- arg3: unused
-        , XSM_PUSH t1 -- space for return value
-        , XSM_INT intNum
-        , XSM_POP retReg -- 
-        , XSM_POP t1 -- arg3
-        , XSM_POP t1 -- arg2
-        , XSM_POP t1 -- arg1
-        , XSM_POP t1 -- callNum
-        ]
-      return (retReg, False)
+  G.RSyscall intNum callNum arg1 arg2 arg3 -> withSaveRegs $ \retReg -> do
+    r1 <- getRValueInReg arg1
+    r2 <- getRValueInReg arg2
+    r3 <- getRValueInReg arg3
+    t1 <- getFreeReg
+    appendCode
+      [ XSM_MOV_Int t1 callNum -- Call Number
+      , XSM_PUSH t1
+      , XSM_PUSH r1
+      , XSM_PUSH r2 -- arg2: data to be written
+      , XSM_PUSH r3 -- arg3: unused
+      , XSM_PUSH t1 -- space for return value
+      , XSM_INT intNum
+      , XSM_POP retReg -- 
+      , XSM_POP t1 -- arg3
+      , XSM_POP t1 -- arg2
+      , XSM_POP t1 -- arg1
+      , XSM_POP t1 -- callNum
+      ]
+    return (retReg, False)
   G.RPeek rValue -> do
     r1 <- getRValueInReg rValue
     appendCode [XSM_MOV_IndSrc r1 r1]
@@ -664,8 +660,11 @@ getRValueInReg rValue = case rValue of
 
 
 getFuncLabel :: String -> Codegen String
-getFuncLabel name =
-  gets (funcLabel . fromJust . find (\s -> funcName s == name) . funcs)
+getFuncLabel name = gets
+  ( funcLabel
+  . findJustNote "Codegen: getFuncLabel" (\s -> funcName s == name)
+  . funcs
+  )
 
 type ALUInstr = (Reg -> Reg -> XSMInstr)
 
@@ -706,9 +705,8 @@ logicalOpInstr op = case op of
 
 getSymbol :: String -> Codegen Symbol
 getSymbol name = do
-  lSymbol <- gets
-    (\s -> join $ find (\s -> (symName s) == name) <$> (lSymbols s))
-  gSymbol <- gets (\s -> find (\s -> (symName s) == name) (gSymbols s))
+  lSymbol <- gets (\s -> find (\s -> (symName s) == name) =<< (lSymbols s))
+  gSymbol <- gets (find (\s -> (symName s) == name) . gSymbols)
   case (lSymbol, gSymbol) of
     (Just symbol, _          ) -> return symbol
     (Nothing    , Just symbol) -> return symbol
@@ -749,11 +747,10 @@ getSymbolLocInReg name = do
 
 
 getUserType :: String -> Codegen UserType
-getUserType name = do
-  userType <- gets (\s -> find (\s -> (utName s) == name) (userTypes s))
-  case userType of
-    Just userType -> return userType
-    Nothing       -> error $ "Program bug: Cannot find UserType: " ++ name
+getUserType name = gets
+  ( findJustNote "Codegen: Find user type" (\s -> (utName s) == name)
+  . userTypes
+  )
 
 getFreeReg :: Codegen Reg
 getFreeReg = do
@@ -775,7 +772,7 @@ releaseReg reg = do
     freeRegsHead : freeRegsTail = freeRegs compiler
     usedRegsHead : usedRegsTail = usedRegs compiler
     freeRegs'                   = (reg : freeRegsHead) : freeRegsTail
-    usedRegs' = (filter ((/=) reg) usedRegsHead) : usedRegsTail
+    usedRegs' = filter ((/=) reg) usedRegsHead : usedRegsTail
   put compiler { freeRegs = freeRegs', usedRegs = usedRegs' }
 
 pushRegStack :: Codegen ()
