@@ -125,6 +125,8 @@ data StmtPoke =
   MkStmtPoke RValue RValue
   deriving (Show, Eq)
 
+
+
 data LValue
   = LValueSymbol String [RValue]
   | LValueField LValue String [RValue]
@@ -267,7 +269,7 @@ mkStmtAssign lhs rhs span = do
   unless (length dims == 0)
     $ gThrowError --
     $ errArrayNotAllowed span lhsDeclSpan
-  unless (lhsType == rhsType)
+  unless (lhsType == rhsType || lhsType == Type2 [] TypeAny || rhsType == Type2 [] TypeAny)
     $ gThrowError --
     $ errTypeMismatch lhsType lhsDeclSpan rhsType span
   return $ MkStmtAssign lhs rhs
@@ -432,12 +434,26 @@ mkExpArithmetic (SpanW r1 span1) op (SpanW r2 span2) = do
 mkExpRelational
   :: GrammarM m => SpanW RValue -> OpRelational -> SpanW RValue -> m Exp
 mkExpRelational (SpanW r1 span1) op (SpanW r2 span2) = do
-  typeCheck r1 (Type2 [] <$> [TypeInt, TypeString]) span1
-  typeCheck r2 (Type2 [] <$> [TypeInt, TypeString]) span2
-
   dataType1 <- rValueType r1
   dataType2 <- rValueType r2
-  unless (dataType1 == Type2 [] TypeAny || dataType2 == Type2 [] TypeAny || dataType1 == dataType2)
+  let (Type2 dims1 _) = dataType1
+  let (Type2 dims2 _) = dataType2
+  unless (dims1 == [])
+    $ gThrowError --
+    $ errArrayNotAllowed span1 span1 -- TODO DeclSpan
+
+  unless (dims2 == [])
+    $ gThrowError --
+    $ errArrayNotAllowed span2 span2 -- TODO DeclSpan
+
+  unless
+      (  dataType1
+      == Type2 [] TypeAny
+      || dataType2
+      == Type2 [] TypeAny
+      || dataType1
+      == dataType2
+      )
     $ gThrowError --
     $ errTypeMismatch dataType1 span1 dataType2 span2
 
@@ -550,7 +566,17 @@ mkExpFuncCall funcName args span = do
           do
             argType <- rValueType arg
             let (Type2 dims argPrimType) = argType
-            unless (length dims == 0 && (argPrimType == expectedType || argPrimType == TypeAny || expectedType == TypeAny))
+            unless
+                (  length dims
+                == 0
+                && (  argPrimType
+                   == expectedType
+                   || argPrimType
+                   == TypeAny
+                   || expectedType
+                   == TypeAny
+                   )
+                )
               $ gThrowError
               $ errTypeMismatch
                   argType
