@@ -172,7 +172,10 @@ test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
   step "Assign self"
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [] (Span 0 0)
-    mkStmtAssign (LValueSymbol "foo" []) (RLValue $ LValueSymbol "foo" []) (Span 0 0)
+    mkStmtAssign
+      (LValueSymbol "foo" [])
+      (RLValue $ LValueSymbol "foo" [])
+      (Span 0 0)
 
   step "Type mismatch"
   gAssertError $ do
@@ -186,19 +189,24 @@ test_stmtAssign = testCaseSteps "StmtAssign" $ \step -> do
   gAssertError $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
     doVarDeclare "bar" TypeInt [5, 10] (Span 0 0)
-    mkStmtAssign (LValueSymbol "foo" []) (RLValue $ LValueSymbol "bar" []) (Span 0 0)
+    mkStmtAssign
+      (LValueSymbol "foo" [])
+      (RLValue $ LValueSymbol "bar" [])
+      (Span 0 0)
 
 test_stmtRead :: TestTree
 test_stmtRead = testCaseSteps "StmtRead" $ \step -> do
   step "Read Int"
   gAssertRight $ do
     doVarDeclare "foo" TypeInt [5, 10] (Span 0 0)
-    mkStmtRead $ SpanW (LValueSymbol "foo" (RExp . ExpNum <$> [0, 1])) (Span 0 0)
+    mkStmtRead
+      $ SpanW (LValueSymbol "foo" (RExp . ExpNum <$> [0, 1])) (Span 0 0)
 
   step "Read String"
   gAssertRight $ do
     doVarDeclare "foo" TypeString [5, 10] (Span 0 0)
-    mkStmtRead $ SpanW (LValueSymbol "foo" (RExp . ExpNum <$> [0, 1])) (Span 0 0)
+    mkStmtRead
+      $ SpanW (LValueSymbol "foo" (RExp . ExpNum <$> [0, 1])) (Span 0 0)
 
   step "Read bool"
   gAssertError $ do
@@ -492,12 +500,12 @@ test_doTypeDefine :: TestTree
 test_doTypeDefine = testCaseSteps "Type Define" $ \step -> do
   step "New type"
   state <- gGetState $ do
-    doTypeDefine
-      "myType"
+    define <- doTypeDefine $ spanW "myType"
+    define
       [spanW ("foo", Type2 [] TypeInt), spanW ("bar", Type2 [2] TypeInt)]
       span0
-    doTypeDefine
-      "myType2"
+    define <- doTypeDefine $ spanW "myType2"
+    define
       [spanW ("foo", Type2 [] TypeInt), spanW ("bar", Type2 [2] TypeInt)]
       span0
 
@@ -540,12 +548,12 @@ test_doTypeDefine = testCaseSteps "Type Define" $ \step -> do
 
   step "Redeclare type"
   gAssertError $ do
-    doTypeDefine
-      "myType"
+    define <- doTypeDefine $ spanW "myType"
+    define
       [spanW ("foo", Type2 [] TypeInt), spanW ("bar", Type2 [2] TypeInt)]
       span0
-    doTypeDefine
-      "myType"
+    define <- doTypeDefine $ spanW "myType"
+    define
       [spanW ("foo", Type2 [] TypeInt), spanW ("bar", Type2 [2] TypeInt)]
       span0
 
