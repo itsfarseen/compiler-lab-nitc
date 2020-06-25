@@ -11,6 +11,7 @@ import qualified Data.HashMap.Strict as HM
 import Data.Maybe
 import Flow
 import Text.Read (readMaybe)
+import Safe
 
 -- import Debug.Trace
 -- dbg v = trace (toString v) v
@@ -121,13 +122,13 @@ execute !instr !machine =
           XSM_MOV_Str r1 val -> setRegVal r1 val machine
           XSM_MOV_IndSrc r1 r2 ->
             let
-              r2Val = read (getRegVal r2 machine) :: Int
+              r2Val = readNote "MOV Src" (getRegVal r2 machine) :: Int
               r2Mem = getMemory r2Val machine
             in setRegVal r1 r2Mem machine
           XSM_MOV_IndDst r1 r2 ->
             let
               r2Val = getRegVal r2 machine
-              r1Val = read (getRegVal r1 machine) :: Int
+              r1Val = readNote "MOV Dst" (getRegVal r1 machine) :: Int
             in setMemory r1Val r2Val machine
           XSM_MOV_DirSrc r1 loc ->
             let mem = getMemory loc machine in setRegVal r1 mem machine
@@ -135,14 +136,14 @@ execute !instr !machine =
             let r2Val = getRegVal r2 machine in setMemory loc r2Val machine
           XSM_PUSH r1 ->
             let
-              spVal = read @Int (getRegVal SP machine)
+              spVal = readNote @Int "PUSH SP" (getRegVal SP machine)
               r1Val = getRegVal r1 machine
             in machine
               |> setRegVal SP (spVal + 1)
               |> setMemory (spVal + 1) r1Val
           XSM_POP r1 ->
             let
-              spVal  = read @Int (getRegVal SP machine)
+              spVal  = readNote @Int "POP SP" (getRegVal SP machine)
               memVal = getMemory spVal machine
             in
               machine
@@ -151,35 +152,35 @@ execute !instr !machine =
 
           XSM_ADD r1 r2 ->
             let
-              r1Val = read (getRegVal r1 machine) :: Int
-              r2Val = read (getRegVal r2 machine) :: Int
+              r1Val = readNote @Int "ADD op1" (getRegVal r1 machine) 
+              r2Val = readNote @Int "ADD op2" (getRegVal r2 machine)
             in setRegVal r1 (r1Val + r2Val) machine
           XSM_ADD_I r1 i ->
-            let r1Val = read (getRegVal r1 machine)
+            let r1Val = readNote @Int "ADDI op1" (getRegVal r1 machine)
             in setRegVal r1 (r1Val + i) machine
           XSM_SUB r1 r2 ->
             let
-              r1Val = read (getRegVal r1 machine) :: Int
-              r2Val = read (getRegVal r2 machine) :: Int
+              r1Val = readNote @Int "SUB op1" (getRegVal r1 machine) :: Int
+              r2Val = readNote @Int "SUB op2" (getRegVal r2 machine) :: Int
             in setRegVal r1 (r1Val - r2Val) machine
           XSM_SUB_I r1 i ->
-            let r1Val = read (getRegVal r1 machine)
+            let r1Val = readNote @Int "SUBI op1" (getRegVal r1 machine)
             in setRegVal r1 (r1Val - i) machine
           XSM_MUL r1 r2 ->
             let
-              r1Val = read (getRegVal r1 machine) :: Int
-              r2Val = read (getRegVal r2 machine) :: Int
+              r1Val = readNote @Int "MUL op1" (getRegVal r1 machine) :: Int
+              r2Val = readNote @Int "MUL op2" (getRegVal r2 machine) :: Int
             in setRegVal r1 (r1Val * r2Val) machine
           XSM_MUL_I r1 i ->
-            let r1Val = read (getRegVal r1 machine)
+            let r1Val = readNote @Int "MULI op1" (getRegVal r1 machine)
             in setRegVal r1 (r1Val * i) machine
           XSM_DIV r1 r2 ->
             let
-              r1Val = read (getRegVal r1 machine) :: Int
-              r2Val = read (getRegVal r2 machine) :: Int
+              r1Val = readNote @Int "DIV op1" (getRegVal r1 machine) :: Int
+              r2Val = readNote @Int "DIV op2" (getRegVal r2 machine) :: Int
             in setRegVal r1 (r1Val `div` r2Val) machine
           XSM_DIV_I r1 i ->
-            let r1Val = read (getRegVal r1 machine)
+            let r1Val = readNote @Int "DIVI op1" (getRegVal r1 machine)
             in setRegVal r1 (r1Val `div` i) machine
           XSM_MOD r1 r2 ->
             let
