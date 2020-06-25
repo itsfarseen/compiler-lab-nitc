@@ -553,6 +553,7 @@ getLValueLocInReg1 (G.LValueField lValue ident indices) = do
       (\s -> symName s == ident)
       (utFields userType)
     type_@(G.Type2 dims _) = symType sym
+  appendCode [XSM_MOV_IndSrc baseReg baseReg]
   appendCode [XSM_ADD_I baseReg (symRelLoc sym)]
   (reg, _) <- getLValueLocInReg' baseReg dims indices ident
   return (reg, type_)

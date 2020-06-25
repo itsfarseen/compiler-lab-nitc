@@ -15,6 +15,7 @@ import Test.Tasty.HUnit
 import qualified Backend.Simulator as Simulator
 import qualified Grammar as G
 import Test.LibraryUtils (loadLibrary)
+import Safe
 
 span0 :: Span
 span0 = Span 0 0
@@ -588,6 +589,60 @@ test_getLValueLocInReg = testCaseSteps "getLValueLocInReg" $ \step -> do
   let r2Loc = read @Int (Simulator.getRegVal r2 machine)
   r1Loc @?= 4900 - 3
   r2Loc @?= 4900 - 2
+
+  step "User Type fields"
+  let
+    (code, (reg_foo_val, reg_foo_bar_loc, reg_foo_baz_loc)) =
+      compileGetCodeAndValue
+        (do
+          execStmtInitialize (G.MkStmtInitialize)
+          let foo     = G.LValueSymbol "foo" []
+          let foo_bar = G.LValueField foo "bar" []
+          let foo_baz = G.LValueField foo "baz" []
+          execStmtAlloc (G.MkStmtAlloc foo)
+          foo_val     <- getRValueInReg (G.RLValue foo)
+          foo_bar_loc <- getLValueLocInReg foo_bar
+          foo_baz_loc <- getLValueLocInReg foo_baz
+          return (foo_val, foo_bar_loc, foo_baz_loc)
+        )
+        codegenStateDefault
+          { userTypes    =
+            [ UserType
+                { utName   = "Foo"
+                , utSize   = 2
+                , utFields =
+                  [ Symbol
+                    { symName   = "bar"
+                    , symType   = G.Type2 [] (G.TypeUser "Foo")
+                    , symRelLoc = 0
+                    }
+                  , Symbol
+                    { symName   = "baz"
+                    , symType   = G.Type2 [] G.TypeInt
+                    , symRelLoc = 1
+                    }
+                  ]
+                }
+            ]
+          , gSymbols     =
+            [ Symbol
+                { symName   = "foo"
+                , symType   = G.Type2 [] (G.TypeUser "Foo")
+                , symRelLoc = 0
+                }
+            ]
+          , gSymbolsSize = 1
+          }
+
+  machine <- runSimulator code []
+  let foo_val = readNote @Int "foo_val" $ Simulator.getRegVal reg_foo_val machine
+  let
+    foo_bar_loc = readNote @Int "foo_bar_loc" $ Simulator.getRegVal reg_foo_bar_loc machine
+  let
+    foo_baz_loc = readNote @Int "foo_baz_loc" $ Simulator.getRegVal reg_foo_baz_loc machine
+  foo_val @?= 1024 + 16*8
+  foo_bar_loc @?= foo_val
+  foo_baz_loc @?= foo_val + 1
 
 test_buildFuncArgsTable :: TestTree
 test_buildFuncArgsTable = testCaseSteps "buildFuncArgsTable" $ \_steps ->
