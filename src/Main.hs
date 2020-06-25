@@ -29,7 +29,7 @@ backend mode program = case mode of
   CodeOutputTranslated ->
     unlines $ xexeHeader ++ (map toString (compileXEXE program))
   CodeOutputUntranslated -> unlines $ map
-    (\(i, c) -> i ++ ":\t" ++ (show c))
+    (\(i, c) -> i ++ ":\t\t" ++ (toString c))
     (compileXEXEUntranslated program)
   CodeOutputLibrary -> unlines $ map toString (compileLibrary program)
 
