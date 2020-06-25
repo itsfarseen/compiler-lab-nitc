@@ -1,7 +1,9 @@
 type foo {
     int a;
     int b;
+    int c;
 }
+
 foo f1;
 
 int main()

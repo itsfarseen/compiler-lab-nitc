@@ -1,0 +1,18 @@
+type bst{
+  int a;
+  bst left;
+  bst right;
+}
+
+int main()
+{
+  any a;
+  initialize();
+  bst h;
+  if (1 == 1) then
+    h = alloc();
+    h.a = 123;
+  endif;   
+  return 0;
+}
+

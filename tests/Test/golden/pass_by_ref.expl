@@ -1,0 +1,21 @@
+type Foo {
+    int a;
+    Foo foo;
+}
+
+int setFoo(Foo a) {
+    a = alloc();
+    a.a = 1234;
+    a.foo = alloc();
+    a.foo.a = 9988;
+    return 0;
+}
+
+int main() {
+   initialize();
+   Foo foo;
+   setFoo(foo);
+   write(foo.a);
+   write(foo.foo.a);
+   return 0;
+}
