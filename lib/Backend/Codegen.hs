@@ -66,7 +66,7 @@ data UserType =
 --
 
 compileXEXE :: G.Program -> [XSMInstr]
-compileXEXE program = compileXEXE_ program getCodeTranslated
+compileXEXE program = compileXEXE_ program (getCodeTranslated codeStartAddrXEXE)
 
 compileXEXEUntranslated :: G.Program -> [(String, XSMInstr)]
 compileXEXEUntranslated program = compileXEXE_ program getCodeLabelled
@@ -92,7 +92,7 @@ compileLibrary program =
     runCodegen
         (do
           execFuncDefs
-          getCodeTranslated' 0
+          getCodeTranslated codeStartAddrLibrary
         )
       $ initCodegenState gSymbols funcs userTypes
  where
@@ -201,21 +201,19 @@ convertUserType G.UserType { G.utName, G.utFields } =
   in UserType { utName, utFields = utFields', utSize }
 --
 
-codeStartAddr :: Int
-codeStartAddr = 2056
+codeStartAddrXEXE :: Int
+codeStartAddrXEXE = 2056
 
-xexeHeader :: [String]
-xexeHeader = ["0", show codeStartAddr, "0", "0", "0", "0", "0", "0"]
+codeStartAddrLibrary :: Int
+codeStartAddrLibrary = 0
 
-getCodeTranslated :: Codegen [XSMInstr]
-getCodeTranslated = do
-  labels <- gets labels
-  code   <- gets code
-  let codeTranslated = labelTranslate codeStartAddr code labels
-  return codeTranslated
+headerXEXE :: [String]
+headerXEXE = ["0", show codeStartAddrXEXE, "0", "0", "0", "0", "0", "0"]
 
-getCodeTranslated' :: Int -> Codegen [XSMInstr]
-getCodeTranslated' startAddr = do
+--
+
+getCodeTranslated :: Int -> Codegen [XSMInstr]
+getCodeTranslated startAddr = do
   labels <- gets labels
   code   <- gets code
   let codeTranslated = labelTranslate startAddr code labels
@@ -561,6 +559,7 @@ getLValueLocInReg1 (G.LValueField lValue ident indices) = do
 
 getLValueLocInReg'
   :: Reg -> [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
+
 getLValueLocInReg' baseReg dims indices symName = case (dims, indices) of
   ([]    , []   ) -> return (baseReg, 1)
   ([]    , _ : _) -> error "Codegen bug: Too many indices "

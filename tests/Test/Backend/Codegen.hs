@@ -31,7 +31,7 @@ compileGetCodeAndValue codegenM codegenState = runCodegen
     ret <- codegenM
     appendCode [XSM_INT 10]
     execFuncDefs
-    code <- getCodeTranslated
+    code <- getCodeTranslated codeStartAddrXEXE
     return (code, ret)
   )
   codegenState
