@@ -583,13 +583,14 @@ restoreRegs regs = mapM_ (\reg -> appendCode [XSM_POP reg]) regs
 
 withSaveRegs :: (Reg -> Codegen (a, Bool)) -> Codegen a
 withSaveRegs action = do
-  usedRegs <- getUsedRegs
+  usedRegs_ <- getUsedRegs
   reg      <- getFreeReg
-  backupRegs (filter ((/=) reg) usedRegs)
+  backupRegs (filter ((/=) reg) usedRegs_)
   pushRegStack
+  modify (\s -> s{freeRegs = (filter ((/=) reg) (head $ freeRegs s)):(tail $ freeRegs s), usedRegs = (reg : (head $ usedRegs s)):(tail $ usedRegs s)})
   (a, shouldReleaseReg) <- action reg
   popRegStack
-  restoreRegs (filter ((/=) reg) usedRegs)
+  restoreRegs (filter ((/=) reg) usedRegs_)
   when shouldReleaseReg $ releaseReg reg
   return a
 
@@ -614,25 +615,28 @@ getRValueInReg rValue = case rValue of
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
-  G.RFuncCall fname args -> do
-    usedRegs <- getUsedRegs
-    backupRegs usedRegs
+  G.RFuncCall fname args -> withSaveRegs $ \retReg -> do
     label <- getFuncLabel fname
     mapM_
       (\arg -> do
-        r1 <- getRValueInReg arg
+        r1 <- case arg of
+          (G.RLValue lValue) -> do
+            (reg, typ) <- getLValueLocInReg1 lValue
+            case typ of
+              G.Type2 _ (G.TypeUser _) -> return reg
+              _                        -> getRValueInReg arg
+          _ -> getRValueInReg arg
         appendCode [XSM_PUSH r1]
         releaseReg r1
       )
       args
     appendCode [XSM_PUSH R0] -- Space for return value
     appendCode [XSM_UTJ $ XSM_UTJ_CALL label]
-    r1 <- getFreeReg
-    appendCode [XSM_POP r1]
+    appendCode [XSM_POP retReg]
     t <- getFreeReg
     mapM_ (\_ -> appendCode [XSM_POP t]) args
     releaseReg t
-    return r1
+    return (retReg, False)
   G.RSyscall intNum callNum arg1 arg2 arg3 -> withSaveRegs $ \retReg -> do
     r1 <- getRValueInReg arg1
     r2 <- getRValueInReg arg2
@@ -738,6 +742,11 @@ getSymbolLocInReg name = do
       r <- getFreeReg
       appendCode [XSM_MOV_R r BP]
       appendCode [XSM_ADD_I r (symRelLoc symbol)]
+      case symType symbol of
+        (G.Type2 _ (G.TypeUser _)) -> if (symRelLoc symbol) < 0
+          then appendCode [XSM_MOV_IndSrc r r]
+          else return ()
+        _ -> return ()
       return r
     (Nothing, Just symbol) -> do
       r <- getFreeReg
