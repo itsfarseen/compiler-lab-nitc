@@ -68,10 +68,14 @@ $sq_bracket_close = \]
 @strlit      = \"[^\"]*\"
 @ident       = [a-zA-Z_][a-zA-Z0-9_]*
 @skip        = decl|enddecl|begin|end|endtype
+@comment     = \/\/[^\n]*
+@comment2    = \/\*[^\*]*\*\/
 
 tokens :-
     $white+      ;
     @skip        ;
+    @comment     ;
+    @comment2    ;
 
     $plus        {token TokenPlus}
     $minus       {token TokenMinus}
