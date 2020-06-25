@@ -111,33 +111,32 @@ runCodegen compiler state = evalState compiler state
 
 initCodegenState
   :: [G.Symbol] -> [G.FuncDef] -> [G.UserType] -> CodegenState
-initCodegenState symbols funcs userTypes = initCodegenStateInternal
-  gSymbols
-  gSymbolsSize
-  funcs'
-  userTypes'
+initCodegenState symbols funcs userTypes = codegenStateDefault
+  { gSymbols
+  , gSymbolsSize
+  , funcs        = funcs'
+  , userTypes    = userTypes'
+  }
  where
   (gSymbols, gSymbolsSize) = buildSymbolTable symbols 0
   funcs'                   = buildFuncsTable funcs 0
   userTypes'               = map convertUserType userTypes
 
-initCodegenStateInternal
-  :: [Symbol] -> Int -> [Func] -> [UserType] -> CodegenState
-initCodegenStateInternal gSymbols gSymbolsSize funcs userTypes =
-  CodegenState
-    { freeRegs           = [[R0 .. R19]]
-    , usedRegs           = [[]]
-    , code               = []
-    , labels             = HM.empty
-    , lastLabelNo        = 0
-    , loopBreakLabels    = []
-    , loopContinueLabels = []
-    , gSymbols
-    , gSymbolsSize
-    , lSymbols           = Nothing
-    , funcs
-    , userTypes
-    }
+codegenStateDefault :: CodegenState
+codegenStateDefault = CodegenState
+  { freeRegs           = [[R0 .. R19]]
+  , usedRegs           = [[]]
+  , code               = []
+  , labels             = HM.empty
+  , lastLabelNo        = 0
+  , loopBreakLabels    = []
+  , loopContinueLabels = []
+  , gSymbols           = []
+  , gSymbolsSize       = 0
+  , lSymbols           = Nothing
+  , funcs              = []
+  , userTypes          = []
+  }
 
 buildSymbolTable :: [G.Symbol] -> Int -> ([Symbol], Int)
 buildSymbolTable symbols locBase =

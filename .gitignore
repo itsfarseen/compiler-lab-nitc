@@ -5,4 +5,5 @@ vendor
 Session.vim
 .undodir
 notes.txt
-extra/library.xsm
+extra/*.xsm
+tests/Test/golden/*.xsm
