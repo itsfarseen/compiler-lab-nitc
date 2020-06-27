@@ -108,7 +108,6 @@ data StmtReturn =
   MkStmtReturn RValue
   deriving (Show, Eq)
 
-
 data StmtInitialize =
   MkStmtInitialize
   deriving (Show, Eq)
@@ -124,8 +123,6 @@ data StmtFree =
 data StmtPoke =
   MkStmtPoke RValue RValue
   deriving (Show, Eq)
-
-
 
 data LValue
   = LValueSymbol String [RValue]

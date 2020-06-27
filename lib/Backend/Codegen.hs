@@ -467,15 +467,8 @@ execStmtAlloc :: G.StmtAlloc -> Codegen ()
 execStmtAlloc stmt = withSaveRegs $ \retReg -> do
   let G.MkStmtAlloc lValue = stmt
   (_, type_) <- getLValueLocInReg1 lValue
-  let G.Type2 _dims type1 = type_
-  size <- case type1 of
-    G.TypeUser typeName -> do
-      userType <- getUserType typeName
-      return $ utSize userType
-    _ ->
-      error
-        $  "Program bug: Can only allocate UserType. Got: "
-        ++ (show type1)
+  userType <- lookupUserType (getUserTypeName type_)
+  let size = utSize userType
   t1 <- getFreeReg
   appendCode
     [ XSM_MOV_Str t1 "Alloc" -- arg1: Function Name
@@ -537,14 +530,7 @@ getLValueLocInReg1 (G.LValueSymbol ident indices) = do
   return (reg, type_)
 getLValueLocInReg1 (G.LValueField lValue ident indices) = do
   (baseReg, baseType) <- getLValueLocInReg1 lValue
-  userType            <- case baseType of
-    G.Type2 [] (G.TypeUser utName_) -> gets
-      ( findJustNote
-          "Codegen: Find UserType by name"
-          (\t -> utName t == utName_)
-      . userTypes
-      )
-    _ -> error "Unreachable"
+  userType            <- lookupUserType (getUserTypeName baseType)
   let
     sym = findJustNote
       "Codegen: Find member field"
@@ -556,9 +542,23 @@ getLValueLocInReg1 (G.LValueField lValue ident indices) = do
   (reg, _) <- getLValueLocInReg' baseReg dims indices ident
   return (reg, type_)
 
+lookupUserType :: String -> Codegen UserType
+lookupUserType name = do
+  gets
+      ( findJustNote
+          ("Codegen: Find UserType by name: " ++ name)
+          (\t -> utName t == name)
+      . userTypes
+      )
 
 getLValueLocInReg'
   :: Reg -> [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
+
+
+getUserTypeName :: G.Type2 -> String
+getUserTypeName type_ =  case type_ of
+    G.Type2 [] (G.TypeUser utName_) -> utName_
+    _ -> error $ "getUserTypeName: Not TypeUser: " ++ (show type_)
 
 getLValueLocInReg' baseReg dims indices symName = case (dims, indices) of
   ([]    , []   ) -> return (baseReg, 1)
