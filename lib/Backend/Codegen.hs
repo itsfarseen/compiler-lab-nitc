@@ -66,7 +66,8 @@ data UserType =
 --
 
 compileXEXE :: G.Program -> [XSMInstr]
-compileXEXE program = compileXEXE_ program (getCodeTranslated codeStartAddrXEXE)
+compileXEXE program =
+  compileXEXE_ program (getCodeTranslated codeStartAddrXEXE)
 
 compileXEXEUntranslated :: G.Program -> [(String, XSMInstr)]
 compileXEXEUntranslated program = compileXEXE_ program getCodeLabelled
@@ -466,9 +467,10 @@ execStmtInitialize _stmt = withSaveRegs $ \_retReg -> do
 execStmtAlloc :: G.StmtAlloc -> Codegen ()
 execStmtAlloc stmt = withSaveRegs $ \retReg -> do
   let G.MkStmtAlloc lValue = stmt
-  (_, type_) <- getLValueLocInReg1 lValue
-  userType <- lookupUserType (getUserTypeName type_)
+  (reg, type_) <- getLValueLocInReg1 lValue
+  userType   <- lookupUserType (getUserTypeName type_)
   let size = utSize userType
+  backupRegs [reg]
   t1 <- getFreeReg
   appendCode
     [ XSM_MOV_Str t1 "Alloc" -- arg1: Function Name
@@ -485,7 +487,7 @@ execStmtAlloc stmt = withSaveRegs $ \retReg -> do
     , XSM_POP t1 -- arg2
     , XSM_POP t1 -- arg1
     ]
-  reg <- getLValueLocInReg lValue
+  restoreRegs [reg]
   appendCode [XSM_MOV_IndDst reg retReg]
   return ((), True)
 
@@ -519,6 +521,9 @@ execStmtPoke stmt = do
   srcReg <- getRValueInReg src
   appendCode [XSM_MOV_IndDst dstReg srcReg]
 
+
+--
+
 getLValueLocInReg :: G.LValue -> Codegen Reg
 getLValueLocInReg a = fst <$> getLValueLocInReg1 a
 
@@ -526,53 +531,124 @@ getLValueLocInReg1 :: G.LValue -> Codegen (Reg, G.Type2)
 getLValueLocInReg1 (G.LValueSymbol ident indices) = do
   type_@(G.Type2 dims _) <- getSymbolType ident
   baseReg                <- getSymbolLocInReg ident
-  (reg, _)               <- getLValueLocInReg' baseReg dims indices ident
+  (reg, _)               <- applyIndices baseReg dims indices ident
   return (reg, type_)
 getLValueLocInReg1 (G.LValueField lValue ident indices) = do
   (baseReg, baseType) <- getLValueLocInReg1 lValue
-  userType            <- lookupUserType (getUserTypeName baseType)
-  let
-    sym = findJustNote
-      "Codegen: Find member field"
-      (\s -> symName s == ident)
-      (utFields userType)
-    type_@(G.Type2 dims _) = symType sym
+  sym                 <- getFieldSymbol (getUserTypeName baseType) ident
+  let type_@(G.Type2 dims _) = symType sym
   appendCode [XSM_MOV_IndSrc baseReg baseReg]
   appendCode [XSM_ADD_I baseReg (symRelLoc sym)]
-  (reg, _) <- getLValueLocInReg' baseReg dims indices ident
+  (reg, _) <- applyIndices baseReg dims indices ident
   return (reg, type_)
 
-lookupUserType :: String -> Codegen UserType
-lookupUserType name = do
-  gets
-      ( findJustNote
-          ("Codegen: Find UserType by name: " ++ name)
-          (\t -> utName t == name)
-      . userTypes
-      )
-
-getLValueLocInReg'
-  :: Reg -> [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
-
-
-getUserTypeName :: G.Type2 -> String
-getUserTypeName type_ =  case type_ of
-    G.Type2 [] (G.TypeUser utName_) -> utName_
-    _ -> error $ "getUserTypeName: Not TypeUser: " ++ (show type_)
-
-getLValueLocInReg' baseReg dims indices symName = case (dims, indices) of
+applyIndices :: Reg -> [Int] -> [G.RValue] -> String -> Codegen (Reg, Int)
+applyIndices baseReg dims indices symName = case (dims, indices) of
   ([]    , []   ) -> return (baseReg, 1)
   ([]    , _ : _) -> error "Codegen bug: Too many indices "
   (d : ds, []   ) -> do
-    (reg, innerSize) <- getLValueLocInReg' baseReg ds indices symName
+    (reg, innerSize) <- applyIndices baseReg ds indices symName
     return (reg, innerSize * d)
   (d : ds, i : is) -> do
-    (reg, innerSize) <- getLValueLocInReg' baseReg ds is symName
+    (reg, innerSize) <- applyIndices baseReg ds is symName
     rhs              <- getRValueInReg i
     appendCode [XSM_MUL_I rhs innerSize]
     appendCode [XSM_ADD reg rhs]
     releaseReg rhs
     return (reg, innerSize * d)
+
+
+lookupUserType :: String -> Codegen UserType
+lookupUserType name = do
+  gets
+    ( findJustNote
+        ("Codegen: Find UserType by name: " ++ name)
+        (\t -> utName t == name)
+    . userTypes
+    )
+
+getUserTypeName :: G.Type2 -> String
+getUserTypeName type_ = case type_ of
+  G.Type2 [] (G.TypeUser utName_) -> utName_
+  _ -> error $ "getUserTypeName: Not TypeUser: " ++ (show type_)
+
+getSymbol :: String -> Codegen Symbol
+getSymbol name = do
+  lSymbol <- getLocalSymbol name
+  gSymbol <- getGlobalSymbol name
+  case (lSymbol, gSymbol) of
+    (Just symbol, _          ) -> return symbol
+    (Nothing    , Just symbol) -> return symbol
+    (Nothing    , Nothing    ) -> error $ "Symbol not found:" ++ name
+
+getLocalSymbol :: String -> Codegen (Maybe Symbol)
+getLocalSymbol name =
+  gets (\s -> find (\s -> (symName s) == name) =<< (lSymbols s))
+
+getGlobalSymbol :: String -> Codegen (Maybe Symbol)
+getGlobalSymbol name = gets (find (\s -> (symName s) == name) . gSymbols)
+
+getFieldSymbol :: String -> String -> Codegen Symbol
+getFieldSymbol utName fieldName = do
+  userType <- lookupUserType utName
+  return $ findJustNote
+    "Codegen: Find member field"
+    (\s -> symName s == fieldName)
+    (utFields userType)
+
+
+
+getSymbolType :: String -> Codegen G.Type2
+getSymbolType name = symType <$> getSymbol name
+
+{-
+
+Arg 1
+Arg 2
+Arg 3
+Return Value Space
+RET IP SAVE
+BP SAVE                 <- BP
+   --
+Local Var 1
+Local Var 2
+
+-}
+
+getSymbolLocInReg :: String -> Codegen Reg
+getSymbolLocInReg name = do
+  lSymbol <- getLocalSymbol name
+  gSymbol <- getGlobalSymbol name
+  case (lSymbol, gSymbol) of
+    (Just symbol, _          ) -> getLocalSymbolLocInReg symbol
+    (Nothing    , Just symbol) -> getGlobalSymbolLocInReg symbol
+    (Nothing    , Nothing    ) -> error $ "Symbol not found:" ++ name
+
+getLocalSymbolLocInReg :: Symbol -> Codegen Reg
+getLocalSymbolLocInReg symbol = do
+  r <- getFreeReg
+  appendCode [XSM_MOV_R r BP]
+  appendCode [XSM_ADD_I r (symRelLoc symbol)]
+  case symType symbol of
+    (G.Type2 _ (G.TypeUser _)) -> if (symRelLoc symbol) < 0
+      then appendCode [XSM_MOV_IndSrc r r]
+      else return ()
+    _ -> return ()
+  return r
+
+getGlobalSymbolLocInReg :: Symbol -> Codegen Reg
+getGlobalSymbolLocInReg symbol = do
+  r <- getFreeReg
+  appendCode [XSM_MOV_Int r (4096 + symRelLoc symbol)]
+  return r
+
+getUserType :: String -> Codegen UserType
+getUserType name = gets
+  ( findJustNote "Codegen: Find user type" (\s -> (utName s) == name)
+  . userTypes
+  )
+
+--
 
 backupRegs :: [Reg] -> Codegen ()
 backupRegs regs = mapM_ (\reg -> appendCode [XSM_PUSH reg]) regs
@@ -583,10 +659,16 @@ restoreRegs regs = mapM_ (\reg -> appendCode [XSM_POP reg]) regs
 withSaveRegs :: (Reg -> Codegen (a, Bool)) -> Codegen a
 withSaveRegs action = do
   usedRegs_ <- getUsedRegs
-  reg      <- getFreeReg
+  reg       <- getFreeReg
   backupRegs (filter ((/=) reg) usedRegs_)
   pushRegStack
-  modify (\s -> s{freeRegs = (filter ((/=) reg) (head $ freeRegs s)):(tail $ freeRegs s), usedRegs = (reg : (head $ usedRegs s)):(tail $ usedRegs s)})
+  modify
+    (\s -> s
+      { freeRegs =
+        (filter ((/=) reg) (head $ freeRegs s)) : (tail $ freeRegs s)
+      , usedRegs = (reg : (head $ usedRegs s)) : (tail $ usedRegs s)
+      }
+    )
   (a, shouldReleaseReg) <- action reg
   popRegStack
   restoreRegs (filter ((/=) reg) usedRegs_)
@@ -706,59 +788,6 @@ logicalOpInstr op = case op of
 
 --
 
-getSymbol :: String -> Codegen Symbol
-getSymbol name = do
-  lSymbol <- gets (\s -> find (\s -> (symName s) == name) =<< (lSymbols s))
-  gSymbol <- gets (find (\s -> (symName s) == name) . gSymbols)
-  case (lSymbol, gSymbol) of
-    (Just symbol, _          ) -> return symbol
-    (Nothing    , Just symbol) -> return symbol
-    (Nothing    , Nothing    ) -> error $ "Symbol not found:" ++ name
-
-getSymbolType :: String -> Codegen G.Type2
-getSymbolType name = symType <$> getSymbol name
-
-{-
-
-Arg 1
-Arg 2
-Arg 3
-Return Value Space
-RET IP SAVE
-BP SAVE                 <- BP
-   --
-Local Var 1
-Local Var 2
-
--}
-
-getSymbolLocInReg :: String -> Codegen Reg
-getSymbolLocInReg name = do
-  lSymbol <- gets (find (\s -> symName s == name) <=< lSymbols)
-  gSymbol <- gets (find (\s -> symName s == name) . gSymbols)
-  case (lSymbol, gSymbol) of
-    (Just symbol, _) -> do
-      r <- getFreeReg
-      appendCode [XSM_MOV_R r BP]
-      appendCode [XSM_ADD_I r (symRelLoc symbol)]
-      case symType symbol of
-        (G.Type2 _ (G.TypeUser _)) -> if (symRelLoc symbol) < 0
-          then appendCode [XSM_MOV_IndSrc r r]
-          else return ()
-        _ -> return ()
-      return r
-    (Nothing, Just symbol) -> do
-      r <- getFreeReg
-      appendCode [XSM_MOV_Int r (4096 + symRelLoc symbol)]
-      return r
-    (Nothing, Nothing) -> error $ "Symbol not found:" ++ name
-
-
-getUserType :: String -> Codegen UserType
-getUserType name = gets
-  ( findJustNote "Codegen: Find user type" (\s -> (utName s) == name)
-  . userTypes
-  )
 
 getFreeReg :: Codegen Reg
 getFreeReg = do
