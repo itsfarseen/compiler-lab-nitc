@@ -80,6 +80,7 @@ import Debug.Trace
     free       { TokenFree       _ }
     peek       { TokenPeek       _ }
     poke       { TokenPoke       _ }
+    class      { TokenClass       _ }
 
 %nonassoc '='
 %left '&&' '||'
@@ -334,12 +335,19 @@ Type1:
     ident               {% mkType1 $1 <&> flip SpanW (getSpan $1) }
 
 DoTypeDefineBegin:
-    type ident '{'      {% doTypeDefine $2 <&> flip SpanW (getSpanBwn $1 $3)}
+    type ident '{'      {% doTypeDefine $2 <&> flip SpanW (getSpanBwn $1 $3) }
 
 DoTypeDefine :: {()}
 DoTypeDefine:
     DoTypeDefineBegin FieldList '}'
                         {% (spanWVal $1) $2 (getSpanBwn $1 $3) }
+
+DoClassDefineBegin:
+    class ident '{'     {% doClassDefine $2 <&> flip SpanW (getSpanBwn $1 $3) }
+
+DoClassDefine :: {()}
+    DoClassDefineBegin FieldList FuncList '}'
+                        {% (spanWVal $1) $2 $3 (getSpanBwn $1 $4) }
 
 Field :: {[SpanW (String, Type2)]}
 Field:
@@ -352,6 +360,7 @@ FieldList:
     Field               {$1}
   | Field FieldList     {$1 ++ $2}
 
+Func
 
 
 {

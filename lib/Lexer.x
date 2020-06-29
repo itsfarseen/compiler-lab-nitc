@@ -63,6 +63,7 @@ $sq_bracket_close = \]
 @free        = "free"
 @peek        = "peek"
 @poke        = "poke"
+@class       = "class"
 
 @number      = [0-9]+
 @strlit      = \"[^\"]*\"
@@ -124,6 +125,7 @@ tokens :-
     @free        {token TokenFree}
     @peek        {token TokenPeek}
     @poke        {token TokenPoke}
+    @class       {token TokenClass}
 
     @number      {tokenInt   TokenNumber}
     @strlit      {tokenStr   TokenStrLit}
