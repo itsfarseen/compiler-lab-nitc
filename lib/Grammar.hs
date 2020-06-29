@@ -172,7 +172,13 @@ data Symbol =
     { symName :: String
     , symType :: Type2
     , symDeclSpan :: Span
+    , symVisibility :: SymbolVisibility
     }
+  deriving (Show, Eq)
+
+data SymbolVisibility
+  = SVPublic
+  | SVPrivate
   deriving (Show, Eq)
 
 data Func
@@ -250,8 +256,12 @@ doVarDeclare identName primType dims span = do
   return $ ()
  where
   dataType = Type2 dims primType
-  symbol =
-    Symbol { symName = identName, symDeclSpan = span, symType = dataType }
+  symbol   = Symbol
+    { symName       = identName
+    , symDeclSpan   = span
+    , symType       = dataType
+    , symVisibility = SVPublic
+    }
   throwSymbolExists maybeSym = case maybeSym of
     Nothing  -> return ()
     Just sym -> gThrowError
@@ -266,7 +276,14 @@ mkStmtAssign lhs rhs span = do
   unless (length dims == 0)
     $ gThrowError --
     $ errArrayNotAllowed span lhsDeclSpan
-  unless (lhsType == rhsType || lhsType == Type2 [] TypeAny || rhsType == Type2 [] TypeAny)
+  unless
+      (  lhsType
+      == rhsType
+      || lhsType
+      == Type2 [] TypeAny
+      || rhsType
+      == Type2 [] TypeAny
+      )
     $ gThrowError --
     $ errTypeMismatch lhsType lhsDeclSpan rhsType span
   return $ MkStmtAssign lhs rhs
@@ -499,9 +516,10 @@ doFuncDefine retType name args span = do
     >>= declareIfNotDeclared
   fcEnter fDecl
   flip mapM_ args $ \(SpanW (name, primType) span) -> symInsert $ Symbol
-    { symName     = name
-    , symType     = Type2 [] primType
-    , symDeclSpan = span
+    { symName       = name
+    , symType       = Type2 [] primType
+    , symDeclSpan   = span
+    , symVisibility = SVPublic
     }
   return $ \stmts -> do
     syms <- fcExit
@@ -610,7 +628,12 @@ doTypeDefine (SpanW name nameSpan) = do
           let
             (symName, symType) = spanWVal fieldSpanW
             symDeclSpan        = getSpan fieldSpanW
-          in Symbol { symName, symType, symDeclSpan }
+          in Symbol
+            { symName
+            , symType
+            , symDeclSpan
+            , symVisibility = SVPublic
+            }
         )
         fields
     gsModify
