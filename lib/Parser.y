@@ -342,12 +342,14 @@ DoTypeDefine:
     DoTypeDefineBegin FieldList '}'
                         {% (spanWVal $1) $2 (getSpanBwn $1 $3) }
 
+{- temporarily commented out - TODO FIXME
 DoClassDefineBegin:
     class ident '{'     {% doClassDefine $2 <&> flip SpanW (getSpanBwn $1 $3) }
 
 DoClassDefine :: {()}
     DoClassDefineBegin FieldList FuncList '}'
                         {% (spanWVal $1) $2 $3 (getSpanBwn $1 $4) }
+-}
 
 Field :: {[SpanW (String, Type2)]}
 Field:
@@ -359,8 +361,6 @@ FieldList :: {[SpanW (String, Type2)]}
 FieldList:
     Field               {$1}
   | Field FieldList     {$1 ++ $2}
-
-Func
 
 
 {

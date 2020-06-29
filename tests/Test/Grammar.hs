@@ -77,9 +77,10 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
   state @?= Grammar.gsInit
     { gsSymbolStack =
       [ [ Symbol
-            { symName     = "foo"
-            , symType     = Type2 [5, 10] TypeInt
-            , symDeclSpan = span0
+            { symName       = "foo"
+            , symType       = Type2 [5, 10] TypeInt
+            , symDeclSpan   = span0
+            , symVisibility = SVPublic
             }
         ]
       ]
@@ -92,9 +93,10 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
     _define []
   gsSymbolStack state
     @?= [ [ Symbol
-              { symName     = "foo"
-              , symType     = Type2 [5, 10] TypeInt
-              , symDeclSpan = span0
+              { symName       = "foo"
+              , symType       = Type2 [5, 10] TypeInt
+              , symDeclSpan   = span0
+              , symVisibility = SVPublic
               }
           ]
         ]
@@ -115,9 +117,10 @@ test_varDeclare = testCaseSteps "Variable Declaration" $ \step -> do
     FuncDefined FuncDef { fDefSyms } ->
       fDefSyms
         @?= [ Symbol
-                { symName     = "foo"
-                , symType     = Type2 [5, 10] TypeInt
-                , symDeclSpan = span0
+                { symName       = "foo"
+                , symType       = Type2 [5, 10] TypeInt
+                , symDeclSpan   = span0
+                , symVisibility = SVPublic
                 }
             ]
     _ ->
@@ -389,14 +392,16 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
           , fDefArgsLen  = 2
           , fDefSyms     =
             [ Symbol
-              { symName     = "fff"
-              , symType     = Type2 [] TypeInt
-              , symDeclSpan = span0
+              { symName       = "fff"
+              , symType       = Type2 [] TypeInt
+              , symDeclSpan   = span0
+              , symVisibility = SVPublic
               }
             , Symbol
-              { symName     = "bar"
-              , symType     = Type2 [] TypeInt
-              , symDeclSpan = span0
+              { symName       = "bar"
+              , symType       = Type2 [] TypeInt
+              , symDeclSpan   = span0
+              , symVisibility = SVPublic
               }
             ]
           , fDefSpan     = span0
@@ -424,19 +429,22 @@ test_funcDefine = testCaseSteps "Func Define" $ \step -> do
           , fDefArgsLen  = 2
           , fDefSyms     =
             [ Symbol
-              { symName     = "fff"
-              , symType     = Type2 [] TypeInt
-              , symDeclSpan = span0
+              { symName       = "fff"
+              , symType       = Type2 [] TypeInt
+              , symDeclSpan   = span0
+              , symVisibility = SVPublic
               }
             , Symbol
-              { symName     = "bar"
-              , symType     = Type2 [] TypeInt
-              , symDeclSpan = span0
+              { symName       = "bar"
+              , symType       = Type2 [] TypeInt
+              , symDeclSpan   = span0
+              , symVisibility = SVPublic
               }
             , Symbol
-              { symName     = "asd"
-              , symType     = Type2 [] TypeInt
-              , symDeclSpan = span0
+              { symName       = "asd"
+              , symType       = Type2 [] TypeInt
+              , symDeclSpan   = span0
+              , symVisibility = SVPublic
               }
             ]
           , fDefSpan     = span0
@@ -515,14 +523,16 @@ test_doTypeDefine = testCaseSteps "Type Define" $ \step -> do
         { utName     = "myType"
         , utFields   =
           [ Symbol
-            { symName     = "foo"
-            , symType     = Type2 [] TypeInt
-            , symDeclSpan = span0
+            { symName       = "foo"
+            , symType       = Type2 [] TypeInt
+            , symDeclSpan   = span0
+            , symVisibility = SVPublic
             }
           , Symbol
-            { symName     = "bar"
-            , symType     = Type2 [2] TypeInt
-            , symDeclSpan = span0
+            { symName       = "bar"
+            , symType       = Type2 [2] TypeInt
+            , symDeclSpan   = span0
+            , symVisibility = SVPublic
             }
           ]
         , utDeclSpan = span0
@@ -531,14 +541,16 @@ test_doTypeDefine = testCaseSteps "Type Define" $ \step -> do
         { utName     = "myType2"
         , utFields   =
           [ Symbol
-            { symName     = "foo"
-            , symType     = Type2 [] TypeInt
-            , symDeclSpan = span0
+            { symName       = "foo"
+            , symType       = Type2 [] TypeInt
+            , symDeclSpan   = span0
+            , symVisibility = SVPublic
             }
           , Symbol
-            { symName     = "bar"
-            , symType     = Type2 [2] TypeInt
-            , symDeclSpan = span0
+            { symName       = "bar"
+            , symType       = Type2 [2] TypeInt
+            , symDeclSpan   = span0
+            , symVisibility = SVPublic
             }
           ]
         , utDeclSpan = span0
@@ -567,9 +579,10 @@ test_mkType1 = testCaseSteps "mkType1" $ \step -> do
             { utName     = "foo"
             , utFields   =
               [ Symbol
-                  { symName     = "fooa"
-                  , symType     = Type2 [] TypeInt
-                  , symDeclSpan = span0
+                  { symName       = "fooa"
+                  , symType       = Type2 [] TypeInt
+                  , symDeclSpan   = span0
+                  , symVisibility = SVPublic
                   }
               ]
             , utDeclSpan = span0

@@ -707,11 +707,13 @@ test_buildFuncArgsTable = testCaseSteps "buildFuncArgsTable" $ \_steps ->
           { G.symName     = "foo"
           , G.symType     = G.Type2 [] G.TypeInt
           , G.symDeclSpan = undefined
+          , G.symVisibility = G.SVPublic
           }
         , G.Symbol
           { G.symName     = "bar"
           , G.symType     = G.Type2 [] G.TypeInt
           , G.symDeclSpan = undefined
+          , G.symVisibility = G.SVPublic
           }
         ]
     let [s1, s2] = buildFuncArgsTable symbols (-3)
