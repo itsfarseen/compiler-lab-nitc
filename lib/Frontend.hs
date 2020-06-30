@@ -42,9 +42,3 @@ initData sourceCode grammarState =
 
 runFrontend :: FrontendData -> Frontend a -> Either Error a
 runFrontend initData (Frontend state) = runExcept $ evalStateT state initData
-
-
-instance Grammar.GrammarM Frontend where
-  gsGet = gets grammarState
-  gsPut x = modify (\s -> s{grammarState = x})
-  gThrowError = throwError
