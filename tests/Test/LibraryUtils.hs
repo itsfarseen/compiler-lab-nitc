@@ -5,7 +5,6 @@ import System.Directory
 import System.FilePath
 import qualified Parser
 import qualified Frontend
-import qualified Grammar as G
 import qualified Backend.Codegen as Codegen
 import Backend.Instructions (XSMInstr)
 import Control.Monad.Except

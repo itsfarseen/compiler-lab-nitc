@@ -9,7 +9,6 @@ import System.Directory
 import System.FilePath
 import qualified Parser
 import qualified Frontend
-import qualified Grammar as G
 import qualified Backend.Simulator as Simulator
 import qualified Backend.Codegen as Codegen
 import Control.Monad.Except
@@ -45,9 +44,11 @@ runGoldenTest explFile stdinFile = do
   stdin   <- lines <$> readFile stdinFile
   program <- handleError expl explFile $ do
     liftEither $ Frontend.runFrontend
-      (Frontend.initData expl G.gsInit)
+      (Frontend.initData expl)
       do
-        Parser.parse
+        res <- Parser.parse
+        res' <- liftEither res
+        return res'
   let code      = Codegen.compileXEXE program
   let simulator = Simulator.run (Simulator.initWithStdin stdin code library)
   let stdout    = unlines $ Simulator.getStdout simulator

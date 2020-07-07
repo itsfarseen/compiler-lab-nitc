@@ -192,7 +192,15 @@ FunctionArg
 FunctionArgList :: { GState -> Either Error [SpanW (String, Type1)] }
 FunctionArgList
     : {- empty -} {\_ -> return []}
-    | FunctionArgList ',' FunctionArg
+    | FunctionArgList_ {$1}
+
+FunctionArgList_
+    : FunctionArg
+    { \gState -> do
+        x <- $1 gState
+        return [x]
+    }
+    | FunctionArgList_ ',' FunctionArg
     { \gState -> do
         xs <- $1 gState
         x <- $3 gState
@@ -221,11 +229,12 @@ DoFuncDefine
                         { lsFuncDecl  = funcDecl
                         , lsSyms      = lSyms
                         , lsLoopStack = loopStackInit
+                        , lsIsTopLevel = True
                         }
             gState' = funcUpdate funcs' gState
         (lState', stmts) <- $7 lState gState'
         let funcs' = define (lsSyms lState') stmts
-        return $ funcUpdate funcs gState
+        return $ funcUpdate funcs' gState
     }
 
 FSlist :: { LState -> GState -> Either Error (LState, [Stmt]) }
@@ -345,11 +354,11 @@ StmtIfElse
 
 StmtWhile :: { LState -> GState -> Either Error StmtWhile }
 StmtWhile
-    : while '(' RValue ')' FSlist endwhile
+    : while '(' RValue ')' do FSlist endwhile
     { \lState gState -> do
         cond <- $3 lState gState
         (loopStack, define) <- mkStmtWhile cond (lsLoopStack lState)
-        (_, fslist) <- $5 (lState{lsLoopStack = loopStack,  lsIsTopLevel = False}) gState
+        (_, fslist) <- $6 (lState{lsLoopStack = loopStack,  lsIsTopLevel = False}) gState
         return $ define fslist
     }
 
@@ -529,6 +538,13 @@ RValue
 RValues :: { LState -> GState -> Either Error [SpanW RValue] }
 RValues
     : {- empty -}  {\_ _ -> return []}
+    | RValues_  {$1}
+RValues_
+    : RValue
+    { \lState gState -> do
+        x <- $1 lState gState
+        return [x]
+    }
     | RValues ',' RValue    
     { \lState gState -> do
         xs <- ($1 lState gState) 

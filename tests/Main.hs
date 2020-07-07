@@ -1,7 +1,7 @@
-import Test.Backend.Codegen
+-- import Test.Backend.Codegen
 import Test.Backend.Simulator
-import Test.Library
-import Test.Grammar
+-- import Test.Library
+-- import Test.Grammar
 import Test.Tasty
 import qualified Test.Golden
 
@@ -10,10 +10,13 @@ main = do
   goldenTests <- Test.Golden.main
   defaultMain
     $ testGroup "Main"
-    $ [ Test.Backend.Codegen.tests
-      , Test.Backend.Simulator.tests
-      , Test.Grammar.tests
-      , Test.Library.tests
+    $ [ Test.Backend.Simulator.tests
       , goldenTests
       ]
+    -- $ [ Test.Backend.Codegen.tests
+    --   , Test.Backend.Simulator.tests
+    --   , Test.Grammar.tests
+    --   , Test.Library.tests
+    --   , goldenTests
+    --   ]
 

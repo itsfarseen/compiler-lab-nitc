@@ -91,13 +91,13 @@ test-suite test
     LoopStack
     Parser
     Span
-    Test.Backend.Codegen
+    -- Test.Backend.Codegen
     Test.Backend.Simulator
     Test.Golden
     -- Test.Grammar
     Test.Utils
     Test.LibraryUtils
-    Test.Library
+    -- Test.Library
     Token
     Utils
 
