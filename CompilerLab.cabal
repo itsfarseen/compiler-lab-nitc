@@ -36,6 +36,7 @@ executable CompilerLab
     Error
     Frontend
     Grammar
+    GrammarUtils
     Lexer
     LoopStack
     Parser
@@ -43,7 +44,8 @@ executable CompilerLab
     Token
     Utils
 
-  ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS -fprof-auto -fprof-cafs
+  ghc-options: -Wall -Wno-name-shadowing -O0 -j8 +RTS -A128m -n2m -RTS
+               -fprof-auto -fprof-cafs 
 
   build-depends:
       base
@@ -84,6 +86,7 @@ test-suite test
     Error
     Frontend
     Grammar
+    GrammarUtils
     Lexer
     LoopStack
     Parser
@@ -91,7 +94,7 @@ test-suite test
     Test.Backend.Codegen
     Test.Backend.Simulator
     Test.Golden
-    Test.Grammar
+    -- Test.Grammar
     Test.Utils
     Test.LibraryUtils
     Test.Library

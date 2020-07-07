@@ -21,13 +21,16 @@ prompt text = do
   getLine
 
 frontend :: Frontend Grammar.Program
-frontend = Parser.parse
+frontend = do
+  res <- Parser.parse
+  res' <- liftEither res
+  return res'
 
 
 backend :: CodeOutputMode -> Grammar.Program -> String
 backend mode program = case mode of
   CodeOutputTranslated ->
-    unlines $ xexeHeader ++ (map toString (compileXEXE program))
+    unlines $ headerXEXE ++ (map toString (compileXEXE program))
   CodeOutputUntranslated -> unlines $ map
     (\(i, c) -> i ++ ":\t\t" ++ (toString c))
     (compileXEXEUntranslated program)
@@ -59,7 +62,7 @@ main = do
   input <- readFile inputFile
   handleError input inputFile $ do
     program <- liftEither $ Frontend.runFrontend
-      (Frontend.initData input Grammar.gsInit)
+      (Frontend.initData input)
       frontend
     let output = backend codeOutputMode program
     liftIO $ writeFile outputFile output

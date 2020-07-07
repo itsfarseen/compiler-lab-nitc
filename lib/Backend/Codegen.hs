@@ -74,7 +74,7 @@ compileXEXEUntranslated program = compileXEXE_ program getCodeLabelled
 
 compileXEXE_ :: G.Program -> Codegen a -> a
 compileXEXE_ program action =
-  let (G.Program gSymbols funcs userTypes) = program
+  let (G.Program (G.SymTabGlobal gSymbols) funcs userTypes) = program
   in
     runCodegen
         (do
@@ -88,7 +88,7 @@ compileXEXE_ program action =
 
 compileLibrary :: G.Program -> [XSMInstr]
 compileLibrary program =
-  let (G.Program gSymbols funcs userTypes) = checkLibraryProgram program
+  let (G.Program (G.SymTabGlobal gSymbols) funcs userTypes) = checkLibraryProgram program
   in
     runCodegen
         (do
@@ -97,7 +97,7 @@ compileLibrary program =
         )
       $ initCodegenState gSymbols funcs userTypes
  where
-  checkLibraryProgram program@(G.Program gSymbols funcs _userTypes)
+  checkLibraryProgram program@(G.Program (G.SymTabGlobal gSymbols) funcs _userTypes)
     | not (null gSymbols) = error "Global variables not allowed in library"
     | length funcs > 1 = error "No extra functions allowed in library"
     | G.fDefName (head funcs) /= "library" = error
@@ -164,7 +164,8 @@ buildFuncsTable funcs i = case funcs of
   toFunc f = case f of
     G.FuncDef { G.fDefName, G.fDefRetType, G.fDefBody, G.fDefArgsLen, G.fDefSyms }
       -> let
-           (args, localVars)     = splitAt fDefArgsLen fDefSyms
+           (G.SymTabLocal fDefSyms') = fDefSyms
+           (args, localVars)     = splitAt fDefArgsLen fDefSyms'
            args'                 = buildFuncArgsTable args (-3)
            (localVars', locNext) = buildSymbolTable localVars 1
          in Func
@@ -528,14 +529,29 @@ getLValueLocInReg :: G.LValue -> Codegen Reg
 getLValueLocInReg a = fst <$> getLValueLocInReg1 a
 
 getLValueLocInReg1 :: G.LValue -> Codegen (Reg, G.Type2)
-getLValueLocInReg1 (G.LValueSymbol ident indices) = do
-  type_@(G.Type2 dims _) <- getSymbolType ident
-  baseReg                <- getSymbolLocInReg ident
+getLValueLocInReg1 (G.LValueGlobal ident indices _ _) = do
+  symbol <- fromJustNote "getLValueLocInReg1 GSymbol" <$> getGlobalSymbol ident
+  let type_@(G.Type2 dims _) = symType symbol
+  baseReg <- getFreeReg
+  appendCode [XSM_MOV_Int baseReg (4096 + symRelLoc symbol)]
   (reg, _)               <- applyIndices baseReg dims indices ident
   return (reg, type_)
-getLValueLocInReg1 (G.LValueField lValue ident indices) = do
-  (baseReg, baseType) <- getLValueLocInReg1 lValue
-  sym                 <- getFieldSymbol (getUserTypeName baseType) ident
+getLValueLocInReg1 (G.LValueLocal ident indices _ _) = do
+  symbol <- fromJustNote "getLValueLocInReg1 LSymbol" <$> getLocalSymbol ident
+  let type_@(G.Type2 dims _) = symType symbol
+  baseReg <- getFreeReg
+  appendCode [XSM_MOV_R baseReg BP]
+  appendCode [XSM_ADD_I baseReg (symRelLoc symbol)]
+  case symType symbol of
+    (G.Type2 _ (G.TypeUser _)) -> if (symRelLoc symbol) < 0
+      then appendCode [XSM_MOV_IndSrc baseReg baseReg]
+      else return ()
+    _ -> return ()
+  (reg, _)               <- applyIndices baseReg dims indices ident
+  return (reg, type_)
+getLValueLocInReg1 (G.LValueField ident indices _ _ lValue parentUTName) = do
+  (baseReg, _) <- getLValueLocInReg1 lValue
+  sym                 <- getFieldSymbol parentUTName ident
   let type_@(G.Type2 dims _) = symType sym
   appendCode [XSM_MOV_IndSrc baseReg baseReg]
   appendCode [XSM_ADD_I baseReg (symRelLoc sym)]
@@ -615,32 +631,6 @@ Local Var 2
 
 -}
 
-getSymbolLocInReg :: String -> Codegen Reg
-getSymbolLocInReg name = do
-  lSymbol <- getLocalSymbol name
-  gSymbol <- getGlobalSymbol name
-  case (lSymbol, gSymbol) of
-    (Just symbol, _          ) -> getLocalSymbolLocInReg symbol
-    (Nothing    , Just symbol) -> getGlobalSymbolLocInReg symbol
-    (Nothing    , Nothing    ) -> error $ "Symbol not found:" ++ name
-
-getLocalSymbolLocInReg :: Symbol -> Codegen Reg
-getLocalSymbolLocInReg symbol = do
-  r <- getFreeReg
-  appendCode [XSM_MOV_R r BP]
-  appendCode [XSM_ADD_I r (symRelLoc symbol)]
-  case symType symbol of
-    (G.Type2 _ (G.TypeUser _)) -> if (symRelLoc symbol) < 0
-      then appendCode [XSM_MOV_IndSrc r r]
-      else return ()
-    _ -> return ()
-  return r
-
-getGlobalSymbolLocInReg :: Symbol -> Codegen Reg
-getGlobalSymbolLocInReg symbol = do
-  r <- getFreeReg
-  appendCode [XSM_MOV_Int r (4096 + symRelLoc symbol)]
-  return r
 
 getUserType :: String -> Codegen UserType
 getUserType name = gets
@@ -696,7 +686,7 @@ getRValueInReg rValue = case rValue of
     reg <- getLValueLocInReg lValue
     appendCode [XSM_MOV_IndSrc reg reg]
     return reg
-  G.RFuncCall fname args -> withSaveRegs $ \retReg -> do
+  G.RFuncCall fname args _ -> withSaveRegs $ \retReg -> do
     label <- getFuncLabel fname
     mapM_
       (\arg -> do

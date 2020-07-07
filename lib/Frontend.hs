@@ -9,14 +9,12 @@ import Control.Monad.State.Strict
 import Control.Monad.Except
 import Data.Word
 import Error (Error)
-import qualified Grammar
 
 data AlexInput = AlexInput {alexInputStr :: [Word8], alexTokenOffset :: Int }
 
 data FrontendData =
   FrontendData
     { alexInput :: AlexInput
-    , grammarState :: Grammar.GrammarState
     }
 
 newtype Frontend a =
@@ -31,14 +29,19 @@ instance AlexInputState Frontend where
   getAlexInput = gets alexInput
   putAlexInput alexInput = modify $ \s -> s { alexInput }
 
-initData :: String -> Grammar.GrammarState -> FrontendData
-initData sourceCode grammarState =
-  let alexInput = AlexInput { alexInputStr    = UString.encode sourceCode
-                            , alexTokenOffset = 0
-                            }
-  in  FrontendData { alexInput
-                   , grammarState
-                   }
+initData :: String -> FrontendData
+initData sourceCode =
+  let
+    alexInput = AlexInput
+      { alexInputStr    = UString.encode sourceCode
+      , alexTokenOffset = 0
+      }
+  in FrontendData { alexInput }
 
 runFrontend :: FrontendData -> Frontend a -> Either Error a
-runFrontend initData (Frontend state) = runExcept $ evalStateT state initData
+runFrontend initData (Frontend state) =
+  runExcept $ evalStateT state initData
+
+throwError :: Error -> Frontend a
+throwError e = 
+  liftEither $ Left e

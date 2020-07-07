@@ -12,40 +12,7 @@ import Test.Tasty.HUnit
 import Test.Tasty (TestTree, testGroup)
 import Test.Utils
 
-newtype TestGrammarM a =
-  TestGrammarM (StateT GrammarState (Except Error) a)
-  deriving ( Functor
-           , Applicative
-           , Monad
-           , MonadState GrammarState
-           , MonadError Error
-           )
 
-instance GrammarM TestGrammarM where
-  gsGet       = get
-  gsPut       = put
-  gThrowError = throwError
-
-gRun :: TestGrammarM a -> Either Error (a, GrammarState)
-gRun = gRuns gsInit
-
-gRuns :: GrammarState -> TestGrammarM a -> Either Error (a, GrammarState)
-gRuns state (TestGrammarM stateT) = runExcept $ runStateT stateT state
-
-gGetVals :: GrammarState -> TestGrammarM a -> IO a
-gGetVals state = (fmap fst) <$> getRight . gRuns state
-
-gGetVal :: TestGrammarM a -> IO a
-gGetVal = gGetVals gsInit
-
-gGetState :: TestGrammarM a -> IO GrammarState
-gGetState = (fmap snd) <$> getRight . gRuns gsInit
-
-gAssertRight :: TestGrammarM a -> IO ()
-gAssertRight x = gGetVal x >> return ()
-
-gAssertError :: TestGrammarM a -> IO ()
-gAssertError = assertError . gRun
 
 tests :: TestTree
 tests = testGroup

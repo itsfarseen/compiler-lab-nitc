@@ -10,37 +10,18 @@
 module Grammar where
 
 import Control.Monad (unless)
-import Control.Monad.Extra (unlessM)
 import Data.Foldable (foldlM)
 import Data.Function ((&))
-import Data.Functor ((<&>))
 import Data.List (find)
-import Data.Maybe (fromJust, isJust, isNothing)
+import Data.Maybe (fromJust, isNothing)
 import Error (Error)
 import qualified Error
 import Span
 
-data GrammarState
-  = GrammarState { gsSymbolStack :: [[Symbol]]
-                 , gsFuncs       :: [Func]
-                 , gsFuncContext :: Maybe FuncDecl
-                 , gsLoopStack   :: Int
-                 , gsUserTypes   :: [UserType]
-                 }
-  deriving (Show, Eq)
-
-gsInit :: GrammarState
-gsInit = GrammarState
-  { gsSymbolStack = [[]]
-  , gsFuncs       = []
-  , gsFuncContext = Nothing
-  , gsLoopStack   = 0
-  , gsUserTypes   = []
-  }
 
 -- AST
 data Program =
-  Program [Symbol] [FuncDef] [UserType]
+  Program SymTabGlobal [FuncDef] [UserType]
   deriving (Eq, Show)
 
 data Stmt
@@ -146,12 +127,19 @@ class SymTab a where
   symInsert :: Symbol -> a -> a
 
 instance SymTab [Symbol] where
-  symLookup name   symbols = (find $ \s -> symName s == name) symbols
+  symLookup name symbols = (find $ \s -> symName s == name) symbols
   symInsert symbol symbols = insertList symName symbol symbols
 
 newtype LoopStack = LoopStack Int deriving (Show, Eq)
+
+loopStackPush :: LoopStack -> LoopStack
 loopStackPush (LoopStack i) = (LoopStack $ i + 1)
+
+hasLoop :: LoopStack -> Bool
 hasLoop (LoopStack i) = i > 0
+
+loopStackInit :: LoopStack
+loopStackInit = LoopStack 0
 
 newtype FuncRetType = FuncRetType Type2
 
@@ -249,19 +237,14 @@ data Type2 =
 data UserType
   = UserType { utName     :: String
              , utFields   :: [Symbol]
+             , utFuncs    :: [Func]
              , utDeclSpan :: Span
              }
   deriving (Eq, Show)
 
-mkProgram :: GrammarState -> Either Error Program
-mkProgram state = do
-  let
-    syms = case gsSymbolStack state of
-      [syms] -> syms
-      []     -> error "Should not happen - empty symbol stack"
-      _      -> error "Should not happen - symbol stack > 1"
-  funcs <- mapM getFuncDef (gsFuncs state)
-  let userTypes = gsUserTypes state
+mkProgram :: SymTabGlobal -> [Func] -> [UserType] -> Either Error Program
+mkProgram syms funcs userTypes = do
+  funcs <- mapM getFuncDef funcs
   return $ Program syms funcs userTypes
  where
   getFuncDef func = case func of
@@ -339,11 +322,10 @@ mkStmtIfElse (SpanW cond span) thenBody elseBody = do
 mkStmtWhile
   :: SpanW RValue
   -> LoopStack
-  -> Either Error (LoopStack, [Stmt] -> (LoopStack, StmtWhile))
+  -> Either Error (LoopStack, [Stmt] -> StmtWhile)
 mkStmtWhile (SpanW cond span) loopStack = do
   typeCheck cond (Type2 [] <$> [TypeBool]) span
-  return $ (loopStackPush loopStack, ) $ \body ->
-    (loopStack, MkStmtWhile cond body)
+  return $ (loopStackPush loopStack, ) $ \body -> MkStmtWhile cond body
 
 mkStmtBreak :: Span -> LoopStack -> Either Error StmtBreak
 mkStmtBreak span loopStack = do
@@ -453,7 +435,7 @@ mkLValueSymbol (SpanW identName identSpan) indices lSyms gSyms = do
       $ Left (Error.customError "Too much indices" identSpan) -- TODO Better error
     mapM
       (\(SpanW index indexSpan) -> do
-        typeCheck index [Type2 [] TypeInt] indexSpan 
+        typeCheck index [Type2 [] TypeInt] indexSpan
         return index
       )
       indices
@@ -572,7 +554,11 @@ doFuncDefine
   -> [Func]
   -> Either
        Error
-       ([Func], SymTabLocal, SymTabLocal -> [Stmt] -> [Func])
+       ( [Func]
+       , FuncDecl
+       , SymTabLocal
+       , SymTabLocal -> [Stmt] -> [Func]
+       )
 doFuncDefine retType name args span funcs = do
   let fDecl0 = funcLookup name funcs
   funcs <- if isNothing fDecl0
@@ -587,7 +573,7 @@ doFuncDefine retType name args span funcs = do
     )
     (SymTabLocal [])
     args
-  return $ (funcs, syms, ) $ \syms stmts -> do
+  return $ (funcs, fDecl, syms, ) $ \syms stmts -> do
     let
       fDef = FuncDef
         { fDefName     = fDeclName fDecl
@@ -665,13 +651,15 @@ mkExpFuncCall funcName args span funcs = do
     Nothing  -> Left $ errFuncNotDeclared funcName span
     Just sym -> return sym
 
+
+{-
 doTypeDefine
   :: SpanW String
   -> [UserType]
   -> Either
        Error
        (  [UserType]
-       ,  [SpanW (String, Type2)]
+       ,  [Symbol]
        -> Span
        -> [UserType]
        -> Either Error [UserType]
@@ -683,24 +671,16 @@ doTypeDefine (SpanW name nameSpan) userTypes = do
       UserType { utName = name, utFields = [], utDeclSpan = nameSpan }
   let userTypes' = userTypeInsert userType userTypes
   return $ (userTypes', ) $ \fields span userTypes -> do
-    fields' <- foldlM
-      (\syms fieldSpanW ->
-        let
-          (symName, (Type2 dims type1)) = spanWVal fieldSpanW
-          symDeclSpan                   = getSpan fieldSpanW
-        in doVarDeclare symName type1 dims symDeclSpan syms
-      )
-      []
-      fields
     let
       userType =
-        UserType { utName = name, utFields = fields', utDeclSpan = span }
+        UserType { utName = name, utFields = fields, utDeclSpan = span }
     return $ userTypeInsert userType userTypes
  where
   throwExistingType maybeType = case maybeType of
     Just userType ->
       Left $ errTypeRedeclared name (utDeclSpan userType) nameSpan
     Nothing -> return ()
+-}
 
 mkType1 :: SpanW String -> [UserType] -> Either Error Type1
 mkType1 name' userTypes =
@@ -752,7 +732,7 @@ rValueType (RLValue v  )                = lvType v
 rValueType (RExp    exp)                = expType exp
 rValueType RSyscall{}                   = (Type2 [] TypeAny)
 rValueType RPeek{}                      = (Type2 [] TypeAny)
-rValueType (RFuncCall funcName _ type1) = Type2 [] type1
+rValueType (RFuncCall _ _ type1) = Type2 [] type1
 
 expType :: Exp -> Type2
 expType exp = case exp of

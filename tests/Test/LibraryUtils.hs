@@ -17,9 +17,11 @@ loadLibrary = do
   let library = dir </> "extra" </> "library.expl"
   libraryStr  <- readFile library
   program <- handleError library libraryStr $ do
-    liftEither $ Frontend.runFrontend
-      (Frontend.initData libraryStr G.gsInit)
+    res <- liftEither $ Frontend.runFrontend
+      (Frontend.initData libraryStr)
       Parser.parse
+    res' <- liftEither $ res
+    return res'
   return $ Codegen.compileLibrary program
 
 handleError :: String -> String -> ExceptT (Error) IO a -> IO a
