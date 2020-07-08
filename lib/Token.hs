@@ -52,6 +52,7 @@ data Token
   | TokenPeek Span
   | TokenPoke Span
   | TokenClass Span
+  | TokenExtends Span
   -- Constants, Identifier
   | TokenNumber (SpanW Int)
   | TokenStrLit (SpanW String)
@@ -110,6 +111,7 @@ instance HasSpan Token where
     TokenPeek           span           -> span
     TokenPoke           span           -> span
     TokenClass          span           -> span
+    TokenExtends        span           -> span
     -- Constants, Identifier
     TokenNumber         (SpanW _ span) -> span
     TokenStrLit         (SpanW _ span) -> span

@@ -88,6 +88,7 @@ import Control.Monad ((>=>), unless)
     peek       { TokenPeek       _ }
     poke       { TokenPoke       _ }
     class      { TokenClass      _ }
+    extends    { TokenExtends    _ }
 
 %nonassoc '='
 %left '&&' '||'
@@ -500,6 +501,12 @@ RValue
         mkExpFuncCall (spanWVal $1) args (getSpanBwn $1 $4) (gsFuncs gState)
         <&> flip SpanW (getSpanBwn $1 $4) 
     }
+    | LValue '.' ident '(' RValues ')'
+    { \lState gState -> do
+        lValue <- $1 lState gState
+        args <- $5 lState gState
+        mkExpMethodCall lValue (spanWVal $3) args (getSpanBwn lValue $6) (gsUserTypes gState) <&> flip SpanW (getSpanBwn lValue $6) 
+    }
     | syscall '(' number ',' number ',' RValue ',' RValue ',' RValue ')' 
     { \lState gState -> do
         let intNum = $3
@@ -632,25 +639,42 @@ type_or_class
     : type { SpanW "type" (getSpan $1) }
     | class { SpanW "class" (getSpan $1) }
 
+type_extends
+    : {- empty -} {\_ -> return Nothing}
+    | extends ident 
+    {\gState -> do
+        let name = spanWVal $2
+        let nameSpan = getSpan $2
+        let userTypes = gsUserTypes gState
+        case (userTypeLookup name userTypes) of
+            Just userType -> return $ Just userType
+            Nothing -> Left $ Error.customError ("extends unknown type: " ++ name) 
+                                                nameSpan
+    }
+
 DoTypeDefine :: { [UserType] -> ([UserType] -> GState -> GState) 
                   -> GState -> Either Error GState }
 DoTypeDefine
-    : type_or_class ident '{' TySList '}'
+    : type_or_class ident '{' TySList '}' type_extends
     { \userTypes userTypesUpdate gState -> do
         let name = spanWVal $2
             nameSpan = getSpan $2
+        utParentType <- $6 gState
         case (userTypeLookup name userTypes) of
             Just userType ->
                 Left $ errTypeRedeclared name (utDeclSpan userType) nameSpan
             Nothing -> return ()
          
         let userType = UserType { utName = name
-                                , utFields = []
+                                , utFields = case utParentType of 
+                                    Just ut -> utFields ut
+                                    Nothing -> []
                                 , utFuncs = []
                                 , utDeclSpan = nameSpan
                                 , utFieldsVisibility = (if ((spanWVal $1) == "type") 
                                     then SVPublic 
                                     else SVPrivate)
+                                , utParentName = fmap utName utParentType
                                 }
         let userTypes' = userTypeInsert userType userTypes
         let gState' = userTypesUpdate userTypes' gState

@@ -64,6 +64,7 @@ $sq_bracket_close = \]
 @peek        = "peek"
 @poke        = "poke"
 @class       = "class"
+@extends     = "extends"
 
 @number      = [0-9]+
 @strlit      = \"[^\"]*\"
@@ -126,6 +127,7 @@ tokens :-
     @peek        {token TokenPeek}
     @poke        {token TokenPoke}
     @class       {token TokenClass}
+    @extends     {token TokenExtends}
 
     @number      {tokenInt   TokenNumber}
     @strlit      {tokenStr   TokenStrLit}

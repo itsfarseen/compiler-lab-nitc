@@ -10,6 +10,7 @@
 module Grammar where
 
 import Control.Monad (unless)
+import Control.Applicative
 import Data.Foldable (foldlM)
 import Data.Function ((&))
 import Data.List (find)
@@ -116,6 +117,7 @@ data LValue
                 , lvParent     :: LValue
                 , lvParentTypeName :: String
                 }
+  | LValueSelf  { lvType :: Type2 }
   deriving (Show, Eq)
 
 newtype SymTabLocal = SymTabLocal [Symbol] deriving (Show, Eq, SymTab)
@@ -147,6 +149,7 @@ data RValue
   = RLValue LValue
   | RExp Exp
   | RFuncCall String [RValue] Type1
+  | RMethodCall LValue String [RValue] Type1
   | RSyscall Int Int RValue RValue RValue
   | RPeek RValue
   deriving (Show, Eq)
@@ -224,7 +227,7 @@ data Type1
   = TypeInt
   | TypeBool
   | TypeString
-  | TypeUser String -- Will be implemented as pointer, so single word
+  | TypeUser [String] -- Will be implemented as pointer, so single word
   | TypeAny
   deriving (Eq)
 
@@ -240,6 +243,7 @@ data UserType
              , utFuncs    :: [Func]
              , utDeclSpan :: Span
              , utFieldsVisibility :: SymbolVisibility
+             , utParentName :: Maybe String
              }
   deriving (Eq, Show)
 
@@ -285,39 +289,30 @@ mkStmtAssign lhs rhs span = do
   unless (null dims)
     $ Left --
     $ errArrayNotAllowed span lhsDeclSpan
-  unless
-      (  lhsType
-      == rhsType
-      || lhsType
-      == Type2 [] TypeAny
-      || rhsType
-      == Type2 [] TypeAny
-      )
-    $ Left --
-    $ errTypeMismatch lhsType lhsDeclSpan rhsType span
+  typeCheck lhsType rhsType span
   return $ MkStmtAssign lhs rhs
 
 mkStmtRead :: SpanW LValue -> Either Error StmtRead
 mkStmtRead (SpanW lValue lValueSpan) = do
-  typeCheck
-    (RLValue lValue)
-    (Type2 [] <$> [TypeInt, TypeString])
+  typeCheck1
+    (lvType lValue)
+    ([TypeInt, TypeString])
     lValueSpan
   return $ MkStmtRead lValue
 
 mkStmtWrite :: SpanW RValue -> Either Error StmtWrite
 mkStmtWrite (SpanW rValue rValueSpan) = do
-  typeCheck rValue (Type2 [] <$> [TypeInt, TypeString]) rValueSpan
+  typeCheck1 (rValueType rValue) ( [TypeInt, TypeString]) rValueSpan
   return $ MkStmtWrite rValue
 
 mkStmtIf :: SpanW RValue -> [Stmt] -> Either Error StmtIf
 mkStmtIf (SpanW cond span) body = do
-  typeCheck cond (Type2 [] <$> [TypeBool]) span
+  typeCheck1 (rValueType cond) ( [TypeBool]) span
   return $ MkStmtIf cond body
 
 mkStmtIfElse :: SpanW RValue -> [Stmt] -> [Stmt] -> Either Error StmtIfElse
 mkStmtIfElse (SpanW cond span) thenBody elseBody = do
-  typeCheck cond (Type2 [] <$> [TypeBool]) span
+  typeCheck1 (rValueType cond) ( [TypeBool]) span
   return $ MkStmtIfElse cond thenBody elseBody
 
 mkStmtWhile
@@ -325,7 +320,7 @@ mkStmtWhile
   -> LoopStack
   -> Either Error (LoopStack, [Stmt] -> StmtWhile)
 mkStmtWhile (SpanW cond span) loopStack = do
-  typeCheck cond (Type2 [] <$> [TypeBool]) span
+  typeCheck1 (rValueType cond) ( [TypeBool]) span
   return $ (loopStackPush loopStack, ) $ \body -> MkStmtWhile cond body
 
 mkStmtBreak :: Span -> LoopStack -> Either Error StmtBreak
@@ -347,9 +342,7 @@ mkStmtReturn :: RValue -> Span -> FuncDecl -> Either Error StmtReturn
 mkStmtReturn rValue span funcDecl = do
   let retType     = Type2 [] (fDeclRetType funcDecl)
   let rValueType_ = rValueType rValue
-  unless (retType == rValueType_)
-    $ Left --
-    $ errTypeMismatch retType (fDeclSpan funcDecl) rValueType_ span
+  typeCheck retType rValueType_ span
   return $ MkStmtReturn rValue
 
 mkStmtInitialize :: Span -> Either Error StmtInitialize
@@ -391,7 +384,7 @@ mkStmtPoke :: SpanW RValue -> SpanW RValue -> Span -> Either Error StmtPoke
 mkStmtPoke rValue1SW rValue2SW span = do
   let rValue1 = spanWVal rValue1SW
   let rValue2 = spanWVal rValue2SW
-  typeCheck rValue1 [Type2 [] TypeInt] (getSpan rValue1SW)
+  typeCheck1 (rValueType rValue1) [TypeInt] (getSpan rValue1SW)
   let (Type2 dims2 _) = rValueType rValue2
   unless (null dims2)
     $ Left --
@@ -436,7 +429,7 @@ mkLValueSymbol (SpanW identName identSpan) indices lSyms gSyms = do
       $ Left (Error.customError "Too much indices" identSpan) -- TODO Better error
     mapM
       (\(SpanW index indexSpan) -> do
-        typeCheck index [Type2 [] TypeInt] indexSpan
+        typeCheck1 (rValueType index) [TypeInt] indexSpan
         return index
       )
       indices
@@ -450,9 +443,17 @@ mkLValueField
 mkLValueField lValue (SpanW fieldName fieldNameSpan) indices userTypes =
   do
     utName <- getUserTypeName $ lvType lValue
-    let userType = fromJust $ userTypeLookup utName userTypes
-    unless (utFieldsVisibility userType == SVPublic)
-      (Left $ Error.customError ("Fields are private for: " ++ utName) fieldNameSpan)
+    let
+      userType = fromJust $ userTypeLookup utName userTypes
+      isSelf   = case lValue of
+        LValueSelf{} -> True
+        _            -> False
+    unless
+      (isSelf || utFieldsVisibility userType == SVPublic)
+      (Left $ Error.customError
+        ("Fields are private for: " ++ utName)
+        fieldNameSpan
+      )
     sym <- symLookup fieldName (utFields userType) & \case
       -- TODO Better error
       Nothing  -> Left $ errIdentifierNotDeclared fieldName fieldNameSpan
@@ -462,7 +463,7 @@ mkLValueField lValue (SpanW fieldName fieldNameSpan) indices userTypes =
       $ Left (Error.customError "Too much indices" fieldNameSpan) -- TODO Better error
     indices' <- mapM
       (\(SpanW index indexSpan) -> do
-        typeCheck index [Type2 [] TypeInt] indexSpan
+        typeCheck1 (rValueType index) [TypeInt] indexSpan
         return index
       )
       indices
@@ -478,7 +479,7 @@ mkLValueField lValue (SpanW fieldName fieldNameSpan) indices userTypes =
       }
  where
   getUserTypeName typ = case typ of
-    Type2 [] (TypeUser utName) -> return utName
+    Type2 [] (TypeUser (utName:_)) -> return utName
     Type2 _  _                 -> Left
       (Error.customError
         ("Expected UserType, Got: " ++ show typ)
@@ -488,8 +489,8 @@ mkLValueField lValue (SpanW fieldName fieldNameSpan) indices userTypes =
 mkExpArithmetic
   :: SpanW RValue -> OpArithmetic -> SpanW RValue -> Either Error Exp
 mkExpArithmetic (SpanW r1 span1) op (SpanW r2 span2) = do
-  typeCheck r1 (Type2 [] <$> [TypeInt]) span1
-  typeCheck r2 (Type2 [] <$> [TypeInt]) span2
+  typeCheck1 (rValueType r1) ( [TypeInt]) span1
+  typeCheck1 (rValueType r2) ( [TypeInt]) span2
   return $ MkExpArithmetic r1 op r2
 
 mkExpRelational
@@ -505,23 +506,14 @@ mkExpRelational (SpanW r1 span1) op (SpanW r2 span2) = do
   unless (null dims2)
     $ Left --
     $ errArrayNotAllowed span2 span2 -- TODO DeclSpan
-  unless
-      (  dataType1
-      == Type2 [] TypeAny
-      || dataType2
-      == Type2 [] TypeAny
-      || dataType1
-      == dataType2
-      )
-    $ Left --
-    $ errTypeMismatch dataType1 span1 dataType2 span2
+  typeCheck dataType1 dataType2 span2
   return $ MkExpRelational r1 op r2
 
 mkExpLogical
   :: SpanW RValue -> OpLogical -> SpanW RValue -> Either Error Exp
 mkExpLogical (SpanW r1 span1) op (SpanW r2 span2) = do
-  typeCheck r1 (Type2 [] <$> [TypeBool]) span1
-  typeCheck r2 (Type2 [] <$> [TypeBool]) span2
+  typeCheck1 (rValueType r1) ( [TypeBool]) span1
+  typeCheck1 (rValueType r2) ( [TypeBool]) span2
   return $ MkExpLogical r1 op r2
 
 doFuncDeclare
@@ -626,25 +618,9 @@ mkExpFuncCall funcName args span funcs = do
         span
   args' <-
     mapM
-        (\(SpanW arg argSpan, SpanW expectedType expectedTypeSpan) -> do
+        (\(SpanW arg argSpan, SpanW expectedType _expectedTypeSpan) -> do
           let argType                  = rValueType arg
-          let (Type2 dims argPrimType) = argType
-          unless
-              (  null dims
-              && (  argPrimType
-                 == expectedType
-                 || argPrimType
-                 == TypeAny
-                 || expectedType
-                 == TypeAny
-                 )
-              )
-            $ Left
-            $ errTypeMismatch
-                argType
-                argSpan
-                (Type2 [] expectedType)
-                expectedTypeSpan
+          typeCheck (Type2 [] expectedType) argType argSpan
           return arg
         )
       $ zip args (fDeclArgTypes fDecl)
@@ -653,6 +629,55 @@ mkExpFuncCall funcName args span funcs = do
   throwFuncNotDeclared sym = case sym of
     Nothing  -> Left $ errFuncNotDeclared funcName span
     Just sym -> return sym
+
+
+mkExpMethodCall
+  :: SpanW LValue
+  -> String
+  -> [SpanW RValue]
+  -> Span
+  -> [UserType]
+  -> Either Error RValue
+mkExpMethodCall (SpanW lValue lValueSpan) funcName args span userTypes =
+  do
+    utName <- getUserTypeName $ lvType lValue
+    fDecl  <- throwFuncNotDeclared $ getFDecl funcName utName userTypes
+    unless (length args == length (fDeclArgTypes fDecl))
+      $ Left
+      $ errFuncArgLengthMismatch
+          (length $ fDeclArgTypes fDecl)
+          (length args)
+          (fDeclSpan fDecl)
+          span
+    args' <-
+      mapM
+          (\(SpanW arg argSpan, SpanW expectedType _expectedTypeSpan) -> do
+            let argType                  = rValueType arg
+            typeCheck (Type2 [] expectedType) argType argSpan
+            return arg
+          )
+        $ zip args (fDeclArgTypes fDecl)
+    return $ RMethodCall lValue funcName args' (fDeclRetType fDecl)
+ where
+  throwFuncNotDeclared sym = case sym of
+    Nothing  -> Left $ errFuncNotDeclared funcName span
+    Just sym -> return sym
+  getFDecl funcName utName userTypes =
+    let userType = fromJust $ userTypeLookup utName userTypes
+    in
+      fDeclLookup funcName (utFuncs userType)
+        <|> (do
+              utName <- utParentName userType
+              getFDecl funcName utName userTypes
+            )
+  getUserTypeName typ = case typ of
+    Type2 [] (TypeUser (utName:_)) -> return utName
+    Type2 _  _                 -> Left
+      (Error.customError
+        ("Expected UserType, Got: " ++ show typ)
+        lValueSpan -- TODO Better error
+      )
+
 
 
 {-
@@ -696,12 +721,22 @@ mkType1 name' userTypes =
     "bool" -> return TypeBool
     "any"  -> return TypeAny
     _      -> do
-      userTypeLookup name userTypes & throwTypeDoesnotExist name span
-      return $ TypeUser name
+      userType <- userTypeLookup name userTypes & throwTypeDoesnotExist name span
+      let inhChain = getInhChain userType userTypes
+      return $ TypeUser inhChain
  where
   throwTypeDoesnotExist name span maybeType = case maybeType of
-    Just _  -> return ()
+    Just x  -> return x
     Nothing -> Left $ errTypeDoesnotExist name span
+  getInhChain userType userTypes =
+    case (utParentName userType) of
+      Nothing ->
+        [utName userType]
+      Just parentName ->
+        let parentType = fromJust $ userTypeLookup parentName userTypes
+         in (utName userType) : (getInhChain parentType userTypes)
+
+
 
 mkExpSyscall
   :: SpanW Int
@@ -723,7 +758,7 @@ mkExpPeek rValueSW = do
   let
     rValue = spanWVal rValueSW
     span   = getSpan rValueSW
-  typeCheck rValue [Type2 [] TypeInt] span
+  typeCheck1 (rValueType rValue) [TypeInt] span
   return $ RPeek rValue
 
 -- Helper Functions
@@ -731,11 +766,12 @@ mkExpPeek rValueSW = do
 
 
 rValueType :: RValue -> Type2
-rValueType (RLValue v  )                = lvType v
-rValueType (RExp    exp)                = expType exp
-rValueType RSyscall{}                   = (Type2 [] TypeAny)
-rValueType RPeek{}                      = (Type2 [] TypeAny)
-rValueType (RFuncCall _ _ type1) = Type2 [] type1
+rValueType (RLValue v  )             = lvType v
+rValueType (RExp    exp)             = expType exp
+rValueType RSyscall{}                = (Type2 [] TypeAny)
+rValueType RPeek{}                   = (Type2 [] TypeAny)
+rValueType (RFuncCall _ _ type1    ) = Type2 [] type1
+rValueType (RMethodCall _ _ _ type1) = Type2 [] type1
 
 expType :: Exp -> Type2
 expType exp = case exp of
@@ -751,7 +787,7 @@ instance Show Type1 where
   show TypeInt             = "int"
   show TypeString          = "str"
   show TypeBool            = "bool"
-  show (TypeUser typeName) = typeName
+  show (TypeUser inhChain) = show inhChain
   show TypeAny             = "any"
 
 instance Show Type2 where
@@ -798,12 +834,37 @@ fDeclLookup name funcs = do
         , fDeclSpan     = fDefDeclSpan
         }
 
-typeCheck :: RValue -> [Type2] -> Span -> Either Error ()
-typeCheck rValue allowedTypes span = do
-  let dataType = rValueType rValue
-  unless (dataType `elem` allowedTypes || dataType == Type2 [] TypeAny)
-    $ Left --
-    $ errTypeNotAllowed allowedTypes dataType span
+
+typeCheck :: Type2 -> Type2 -> Span -> Either Error ()
+typeCheck lhsType rhsType span = do 
+  unless
+    (case (lhsType, rhsType) of
+      (Type2 _ TypeAny, _      ) -> True
+      (_      , Type2 _ TypeAny) -> True
+      (Type2 [] (TypeUser inhChainL), Type2 [] (TypeUser inhChainR)) ->
+        (head inhChainL) `elem` inhChainR
+      (x      , y      ) -> x == y
+    )
+    (Left $ Error.customError
+      (  "Type mismatch: Expected "
+      ++ (show lhsType)
+      ++ ". Got: "
+      ++ (show rhsType)
+      )
+      span
+    )
+
+typeCheck1 :: Type2 -> [Type1] -> Span -> Either Error ()
+typeCheck1 type2@(Type2 dims type1) allowedTypes span = do
+  unless (dims == [] && (type1 == TypeAny || type1 `elem` allowedTypes))
+    (Left $ Error.customError
+      (  "Type mismatch: Expected "
+      ++ (show allowedTypes)
+      ++ ". Got: "
+      ++ (show type2)
+      )
+      span
+    )
 
 -- Errors
 errIdentifierNotDeclared :: String -> Span -> Error
