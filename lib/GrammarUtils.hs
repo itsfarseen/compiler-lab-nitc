@@ -14,6 +14,7 @@ data LState =
          , lsLoopStack :: LoopStack
          , lsIsTopLevel :: Bool
          , lsFuncDecl :: FuncDecl
+         , lsCurUserType :: Maybe UserType
          }
 
 data TState = TState { tSyms :: SymTabLocal }

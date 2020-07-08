@@ -230,6 +230,7 @@ DoFuncDefine
                         , lsSyms      = lSyms
                         , lsLoopStack = loopStackInit
                         , lsIsTopLevel = True
+                        , lsCurUserType = Nothing
                         }
             gState' = funcUpdate funcs' gState
         (lState', stmts) <- $7 lState gState'
@@ -452,29 +453,14 @@ StmtPoke:
     }
 
 LValue :: { LState -> GState -> Either Error (SpanW LValue) }
-LValue:
-      ident             
-    { \lState gState -> 
-        let gSyms = gsSyms gState
-            lSyms = lsSyms lState
-        in mkLValueSymbol $1 [] lSyms gSyms 
-            <&> flip SpanW (getSpan $1) 
-    }
-    | ident Indices     
+LValue
+    : ident Indices     
     { \lState gState -> do
         let gSyms = gsSyms gState
             lSyms = lsSyms lState
         indices <- $2 lState gState
         mkLValueSymbol $1 indices lSyms gSyms
             <&> flip SpanW (getSpan $1) 
-    }
-    | LValue '.' ident  
-    { \lState gState -> do
-        let userTypes = gsUserTypes gState
-            ident = $3
-        lValue <- $1 lState gState
-        mkLValueField (spanWVal lValue) ident [] userTypes
-            <&> flip SpanW (getSpanBwn lValue $3) 
     }
     | LValue '.' ident Indices 
     { \lState gState -> do
@@ -488,11 +474,7 @@ LValue:
 
 Indices :: { LState -> GState -> Either Error [SpanW RValue] }
 Indices
-    : '[' RValue ']'    
-    { \lState gState -> do
-        rValue <- $2 lState gState 
-        return [rValue] 
-    }
+    : {- empty -} {\_ _ -> return []}
     | Indices '[' RValue ']'
     { \lState gState -> do
         xs <- ($1 lState gState) 
@@ -646,10 +628,14 @@ Type1:
         <&> (flip SpanW (getSpan $1)) 
     } 
 
+type_or_class
+    : type { SpanW "type" (getSpan $1) }
+    | class { SpanW "class" (getSpan $1) }
+
 DoTypeDefine :: { [UserType] -> ([UserType] -> GState -> GState) 
                   -> GState -> Either Error GState }
-DoTypeDefine:
-    type ident '{' TySList '}'
+DoTypeDefine
+    : type_or_class ident '{' TySList '}'
     { \userTypes userTypesUpdate gState -> do
         let name = spanWVal $2
             nameSpan = getSpan $2
@@ -662,6 +648,9 @@ DoTypeDefine:
                                 , utFields = []
                                 , utFuncs = []
                                 , utDeclSpan = nameSpan
+                                , utFieldsVisibility = (if ((spanWVal $1) == "type") 
+                                    then SVPublic 
+                                    else SVPrivate)
                                 }
         let userTypes' = userTypeInsert userType userTypes
         let gState' = userTypesUpdate userTypes' gState
@@ -682,6 +671,24 @@ TyStmt
         let userType' = userType {utFields = syms'}
         return $ (userTypeUpdate userType' gState, userType')
     }
+    | DoMethodDeclare
+    { \gState userType userTypeUpdate -> do
+        let funcs = utFuncs userType 
+            funcUpdate = \funcs (gState, userType) -> 
+                            let userType' = userType {utFuncs = funcs}
+                                gState' = userTypeUpdate userType' gState
+                            in (gState', userType')
+        $1 funcs funcUpdate (gState, userType)
+    }
+    | DoMethodDefine
+    { \gState userType userTypeUpdate -> do
+        let funcs = utFuncs userType 
+            funcUpdate = \funcs (gState, userType) -> 
+                            let userType' = userType {utFuncs = funcs}
+                                gState' = userTypeUpdate userType' gState
+                            in (gState', userType')
+        $1 funcs funcUpdate (gState, userType)
+    }
     | TyStmt ';' {$1}
 
 TySList :: {GState -> UserType 
@@ -692,6 +699,53 @@ TySList
     { \gState userType userTypeUpdate -> do
         (gState', userType') <- $1 gState userType userTypeUpdate
         $2 gState' userType' userTypeUpdate
+    }
+
+DoMethodDeclare :: { [Func] 
+                  -> ([Func] -> (GState, UserType) -> (GState, UserType)) 
+                  -> (GState, UserType) 
+                  -> Either Error (GState, UserType) }
+DoMethodDeclare
+    : Type1 ident '(' FunctionArgList ')' ';'
+    { \funcs funcUpdate (gState, userType) -> do
+        type1 <- $1 gState
+        argsList <- $4 gState
+        let funcName = spanWVal $2
+            argTypesSW = fmap (fmap snd) argsList
+            declSpan = getSpanBwn type1 $6
+        funcs' <- doFuncDeclare (spanWVal type1) funcName argTypesSW declSpan funcs
+        return $ funcUpdate funcs' (gState, userType)
+    }
+
+DoMethodDefine :: {  [Func] 
+                  -> ([Func] -> (GState, UserType) -> (GState, UserType)) 
+                  -> (GState, UserType) 
+                  -> Either Error (GState, UserType) }
+DoMethodDefine
+    : Type1 ident '(' FunctionArgList ')' '{' FSlist '}'
+    { \funcs funcUpdate (gState, userType) -> do
+        type1 <- $1 gState
+        let funcName = spanWVal $2
+        args <- $4 gState
+        let declSpan = getSpanBwn type1 $5
+        (funcs', funcDecl, lSyms, define) <- doFuncDefine
+            (spanWVal type1)
+            funcName
+            args
+            declSpan
+            funcs
+        let
+            (gState', userType') = funcUpdate funcs' (gState, userType)
+            lState = LState
+                        { lsFuncDecl  = funcDecl
+                        , lsSyms      = lSyms
+                        , lsLoopStack = loopStackInit
+                        , lsIsTopLevel = True
+                        , lsCurUserType = Just userType'
+                        }
+        (lState', stmts) <- $7 lState gState'
+        let funcs' = define (lsSyms lState') stmts
+        return $ funcUpdate funcs' (gState', userType')
     }
 
 {
