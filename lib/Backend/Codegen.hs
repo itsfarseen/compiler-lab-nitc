@@ -174,7 +174,7 @@ buildFuncsTable funcs i = case funcs of
       -> let
            (G.SymTabLocal fDefSyms') = fDefSyms
            (args, localVars)         = splitAt fDefArgsLen fDefSyms'
-           args'                     = buildFuncArgsTable args (-3)
+           args'                     = buildFuncArgsTable args (-4)
            (localVars', locNext)     = buildSymbolTable localVars 1
          in Func
            { funcName          = fDefName
@@ -345,7 +345,9 @@ execStmtRead stmt = withSaveRegs $ \_retReg -> do
     , XSM_PUSH lValueLocReg -- arg3: Buffer loc
     , XSM_PUSH R0 -- arg4: unused
     , XSM_PUSH R0 -- arg5: unused
+    , XSM_PUSH R0 -- selfDummy
     , XSM_CALL 0 -- call library
+    , XSM_POP t1 -- selfDummy
     , XSM_POP t1 -- arg5
     , XSM_POP t1 -- arg4
     , XSM_POP t1 -- arg3
@@ -368,7 +370,9 @@ execStmtWrite stmt = withSaveRegs $ \_retReg -> do
     , XSM_PUSH reg -- arg3: data to be written
     , XSM_PUSH R0 -- arg4: unused
     , XSM_PUSH R0 -- arg5: unused
+    , XSM_PUSH R0 -- selfDummy
     , XSM_CALL 0 -- call library
+    , XSM_POP t1 -- selfDummy
     , XSM_POP t1 -- arg5
     , XSM_POP t1 -- arg4
     , XSM_POP t1 -- arg3
@@ -463,9 +467,11 @@ execStmtInitialize _stmt = withSaveRegs $ \_retReg -> do
     , XSM_PUSH R0 -- arg2: unused
     , XSM_PUSH R0 -- arg3: unused
     , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- selfDummy
     , XSM_PUSH R0 -- space for return value: unused
     , XSM_CALL 0 -- call library
     , XSM_POP t1 -- return value
+    , XSM_POP t1 -- selfDummy
     , XSM_POP t1 -- arg4
     , XSM_POP t1 -- arg3
     , XSM_POP t1 -- arg2
@@ -488,9 +494,11 @@ execStmtAlloc stmt = withSaveRegs $ \retReg -> do
     , XSM_PUSH t1 -- arg2: size
     , XSM_PUSH R0 -- arg3: unused
     , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- selfDummy
     , XSM_PUSH R0 -- space for return value
     , XSM_CALL 0 -- call library
     , XSM_POP retReg -- return value
+    , XSM_POP t1 -- selfDummy
     , XSM_POP t1 -- arg4
     , XSM_POP t1 -- arg3
     , XSM_POP t1 -- arg2
@@ -513,9 +521,11 @@ execStmtFree stmt = withSaveRegs $ \_retReg -> do
     , XSM_PUSH t1 -- arg2: address
     , XSM_PUSH R0 -- arg3: unused
     , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- selfDummy
     , XSM_PUSH R0 -- space for return value
     , XSM_CALL 0 -- call library
     , XSM_POP t1 -- return value
+    , XSM_POP t1 -- selfDummy
     , XSM_POP t1 -- arg4
     , XSM_POP t1 -- arg3
     , XSM_POP t1 -- arg2
@@ -709,14 +719,16 @@ getRValueInReg rValue = case rValue of
         releaseReg r1
       )
       args
+    appendCode [XSM_PUSH R0] -- selfDummy
     appendCode [XSM_PUSH R0] -- Space for return value
     appendCode [XSM_UTJ $ XSM_UTJ_CALL label]
     appendCode [XSM_POP retReg]
     t <- getFreeReg
+    appendCode [XSM_POP t] -- selfDummy
     mapM_ (\_ -> appendCode [XSM_POP t]) args
     releaseReg t
     return (retReg, False)
-  G.RFuncCall fname args _ -> withSaveRegs $ \retReg -> do
+  G.RMethodCall _ fname args _ -> withSaveRegs $ \retReg -> do
     label <- getFuncLabel fname
     mapM_
       (\arg -> do
