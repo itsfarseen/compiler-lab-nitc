@@ -1,0 +1,15 @@
+class A         
+{
+  int f0() {   
+       write("TEST OUT");
+       return 1;
+  }
+}
+
+A a;
+
+int main() {
+    initialize();
+    a = new(A);
+    a.f0();
+}

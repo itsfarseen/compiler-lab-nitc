@@ -331,7 +331,7 @@ execSetupGlobalSymtab :: Codegen ()
 execSetupGlobalSymtab = do
   vTableSize   <- gets vTableSize
   gSymbolsSize <- gets gSymbolsSize
-  appendCode [XSM_MOV_Int SP vTableSize, XSM_ADD_I SP gSymbolsSize]
+  appendCode [XSM_MOV_Int SP (4096 + vTableSize), XSM_ADD_I SP gSymbolsSize]
 
 
 execCallMainFunc :: Codegen ()
@@ -625,9 +625,9 @@ execStmtNew stmt = withSaveRegs $ \retReg -> do
   appendCode [XSM_MOV_IndDst reg retReg]
 
   -- Load VTable
-  appendCode [XSM_MOV_IndDst reg reg]
-  loc <- findVTableLoc 4096 targetTypeName <$> gets userTypeVTables
+  loc <- dbgs "VTableLoc" <$> findVTableLoc 4096 targetTypeName <$> gets userTypeVTables
   appendCode [XSM_MOV_Int reg loc]
+  appendCode [XSM_MOV_IndDst retReg reg]
 
   return ((), True)
  where
@@ -874,7 +874,7 @@ getRValueInReg rValue = case rValue of
       $ snd
       . (findJust (\(name, _) -> name == selfUtName))
       . userTypeVTables
-    let offset = findIndexJust (\vte -> vteFuncName vte == fname) vTable
+    let offset = dbgs "Method offset " (findIndexJust (\vte -> vteFuncName vte == fname) vTable)
     appendCode [XSM_ADD_I vTableBase offset]
     mapM_
       (\arg -> do
@@ -891,6 +891,7 @@ getRValueInReg rValue = case rValue of
       args
     appendCode [XSM_PUSH selfLoc] -- Self
     appendCode [XSM_PUSH R0] -- Space for return value
+    appendCode [XSM_MOV_IndSrc vTableBase vTableBase]
     appendCode [XSM_CALLInd vTableBase]
     appendCode [XSM_POP retReg]
     t <- getFreeReg
