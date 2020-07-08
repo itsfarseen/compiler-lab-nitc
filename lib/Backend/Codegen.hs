@@ -207,7 +207,7 @@ buildFuncArgsTable symbols locBase =
 
 convertUserType :: G.UserType -> UserType
 convertUserType G.UserType { G.utName, G.utFields } =
-  let (utFields', utSize) = buildSymbolTable utFields 0
+  let (utFields', utSize) = buildSymbolTable utFields 1
   in UserType { utName, utFields = utFields', utSize }
 --
 
