@@ -33,6 +33,7 @@ data XSMInstr
   | XSM_JMP Int
   | XSM_INT Int
   | XSM_CALL Int
+  | XSM_CALLInd Reg
   | XSM_RET
   | XSM_NOP
   | XSM_UTJ UntranslatedJump
@@ -92,6 +93,7 @@ toString instr = case instr of
   XSM_JNZ   r1 i                -> "JNZ " ++ show r1 ++ ", " ++ show i
   XSM_JMP  i                    -> "JMP " ++ show i
   XSM_CALL i                    -> "CALL " ++ show i
+  XSM_CALLInd r                    -> "CALL [" ++ show r ++ "]"
   XSM_RET                       -> "RET"
   XSM_INT i                     -> "INT " ++ show i
   XSM_NOP                       -> "NOP"

@@ -210,6 +210,13 @@ execute !instr !machine =
               machine {ip = loc - 2}
               |> setRegVal SP (spVal + 1)
               |> setMemory (spVal + 1) (ip machine + 2)
+          XSM_CALLInd reg ->
+            let spVal = read @Int (getRegVal SP machine)
+                loc = read @Int (getRegVal reg machine)
+            in
+              machine {ip = loc - 2}
+              |> setRegVal SP (spVal + 1)
+              |> setMemory (spVal + 1) (ip machine + 2)
           XSM_RET ->
             let
               spVal = read @Int (getRegVal SP machine)

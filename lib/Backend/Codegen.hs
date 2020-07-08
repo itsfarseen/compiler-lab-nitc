@@ -1,4 +1,5 @@
 {-# LANGUAGE PartialTypeSignatures #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE ConstraintKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -17,6 +18,7 @@ import Data.List (find, sortOn)
 import qualified Data.HashMap.Strict as HM
 import qualified Grammar as G
 import Safe
+import Data.Function
 
 
 import Debug.Trace
@@ -779,11 +781,15 @@ getRValueInReg rValue = case rValue of
     releaseReg t
     return (retReg, False)
   G.RMethodCall self fname args _ -> withSaveRegs $ \retReg -> do
+    let selfUtName = G.lvType self & (\case 
+                      (G.Type2 [] (G.TypeUser inhChain)) -> head inhChain
+                      _ -> error "UnexpectedRMC1")
     selfLoc    <- getRValueInReg (G.RLValue self)
     vTableBase <- getFreeReg
     appendCode [XSM_MOV_IndSrc vTableBase selfLoc]
-
-    label <- getFuncLabel fname
+    vTable <- gets $ snd . (findJust (\(name, _) -> name == selfUtName)) . userTypeVTables
+    let offset = findIndexJust (\vte -> vteFuncName vte == fname) vTable
+    appendCode [XSM_ADD_I vTableBase offset]
     mapM_
       (\arg -> do
         r1 <- case arg of
@@ -797,12 +803,16 @@ getRValueInReg rValue = case rValue of
         releaseReg r1
       )
       args
+    appendCode [XSM_PUSH selfLoc] -- Self
     appendCode [XSM_PUSH R0] -- Space for return value
-    appendCode [XSM_UTJ $ XSM_UTJ_CALL label]
+    appendCode [XSM_CALLInd vTableBase]
     appendCode [XSM_POP retReg]
     t <- getFreeReg
+    appendCode [XSM_POP t] -- Self
     mapM_ (\_ -> appendCode [XSM_POP t]) args
     releaseReg t
+    releaseReg vTableBase
+    releaseReg selfLoc
     return (retReg, False)
   G.RSyscall intNum callNum arg1 arg2 arg3 -> withSaveRegs $ \retReg -> do
     r1 <- getRValueInReg arg1
