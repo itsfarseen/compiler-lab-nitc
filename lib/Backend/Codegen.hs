@@ -91,8 +91,10 @@ compileXEXE_ program action =
   in
     runCodegen
         (do
-          execSetupGlobalSymtab
-          execCallMainFunc
+          execVTableSetup       --  \
+          execSetupGlobalSymtab --   | >>>> IMPORTANT These has to be at the top 
+          execCallMainFunc      --  /                 in this order
+          execMethodDefs
           execFuncDefs
           action
         )
