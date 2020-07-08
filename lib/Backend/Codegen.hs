@@ -329,7 +329,7 @@ prependLabels code i labels =
 
 execSetupGlobalSymtab :: Codegen ()
 execSetupGlobalSymtab = do
-  vTableSize <- gets vTableSize
+  vTableSize   <- gets vTableSize
   gSymbolsSize <- gets gSymbolsSize
   appendCode [XSM_MOV_Int SP vTableSize, XSM_ADD_I SP gSymbolsSize]
 
@@ -358,20 +358,19 @@ execMethodDefs = do
 execVTableSetup :: Codegen ()
 execVTableSetup = do
   vTables <- gets userTypeVTables
-  r <- getFreeReg
+  r       <- getFreeReg
   appendCode [XSM_MOV_Int r 4096]
   mapM_ (execVTableSetup1 r) vTables
   releaseReg r
 
 execVTableSetup1 :: Reg -> (a, [VTableEntry]) -> Codegen ()
-execVTableSetup1 reg (_, vtes) = 
-  flip mapM_ vtes $ \vte -> do
-    let label = vteFuncLabel vte
-    t <- getFreeReg
-    appendCode [XSM_UTJ $ XSM_UTJ_MOV t label]
-    appendCode [XSM_MOV_IndDst reg t]
-    appendCode [XSM_ADD_I reg 1]
-    releaseReg t
+execVTableSetup1 reg (_, vtes) = flip mapM_ vtes $ \vte -> do
+  let label = vteFuncLabel vte
+  t <- getFreeReg
+  appendCode [XSM_UTJ $ XSM_UTJ_MOV t label]
+  appendCode [XSM_MOV_IndDst reg t]
+  appendCode [XSM_ADD_I reg 1]
+  releaseReg t
 
 execFuncDef :: Func -> Codegen ()
 execFuncDef func = do
@@ -402,6 +401,7 @@ execStmt stmt = case stmt of
   G.StmtRValue     stmt -> execStmtRValue stmt
   G.StmtInitialize stmt -> execStmtInitialize stmt
   G.StmtAlloc      stmt -> execStmtAlloc stmt
+  G.StmtNew        stmt -> execStmtNew stmt
   G.StmtFree       stmt -> execStmtFree stmt
   G.StmtPoke       stmt -> execStmtPoke stmt
 
@@ -592,6 +592,51 @@ execStmtAlloc stmt = withSaveRegs $ \retReg -> do
   appendCode [XSM_MOV_IndDst reg retReg]
   return ((), True)
 
+execStmtNew :: G.StmtNew -> Codegen ()
+execStmtNew stmt = withSaveRegs $ \retReg -> do
+  let G.MkStmtNew lValue targetType = stmt
+  let
+    targetTypeName = case targetType of
+      G.TypeUser (inhChain) -> head inhChain
+      _                     -> error "PQR"
+  (reg, type_) <- getLValueLocInReg1 lValue
+  userType     <- lookupUserType (getUserTypeName type_)
+  let size = utSize userType
+  backupRegs [reg]
+  t1 <- getFreeReg
+  appendCode
+    [ XSM_MOV_Str t1 "Alloc" -- arg1: Function Name
+    , XSM_PUSH t1 -- arg1
+    , XSM_MOV_Int t1 size
+    , XSM_PUSH t1 -- arg2: size
+    , XSM_PUSH R0 -- arg3: unused
+    , XSM_PUSH R0 -- arg4: unused
+    , XSM_PUSH R0 -- selfDummy
+    , XSM_PUSH R0 -- space for return value
+    , XSM_CALL 0 -- call library
+    , XSM_POP retReg -- return value
+    , XSM_POP t1 -- selfDummy
+    , XSM_POP t1 -- arg4
+    , XSM_POP t1 -- arg3
+    , XSM_POP t1 -- arg2
+    , XSM_POP t1 -- arg1
+    ]
+  restoreRegs [reg]
+  appendCode [XSM_MOV_IndDst reg retReg]
+
+  -- Load VTable
+  appendCode [XSM_MOV_IndDst reg reg]
+  loc <- findVTableLoc 4096 targetTypeName <$> gets userTypeVTables
+  appendCode [XSM_MOV_Int reg loc]
+
+  return ((), True)
+ where
+  findVTableLoc _ utName [] =
+    error $ "Can't find vtable entry for: " ++ utName
+  findVTableLoc base utName ((utName', vtes) : vtess) =
+    if utName == utName'
+      then base
+      else findVTableLoc (base + (length vtes)) utName vtess
 
 execStmtFree :: G.StmtFree -> Codegen ()
 execStmtFree stmt = withSaveRegs $ \_retReg -> do
@@ -636,7 +681,7 @@ getLValueLocInReg1 (G.LValueGlobal ident indices _ _) = do
     <$> getGlobalSymbol ident
   let type_@(G.Type2 dims _) = symType symbol
   baseReg <- getFreeReg
-  start <- gets vTableSize
+  start   <- gets vTableSize
   appendCode [XSM_MOV_Int baseReg (4096 + start + symRelLoc symbol)]
   (reg, _) <- applyIndices baseReg dims indices ident
   return (reg, type_)

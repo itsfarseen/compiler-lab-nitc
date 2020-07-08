@@ -314,6 +314,11 @@ FStmt
         stmt <- $1 lState gState
         return $ (lState, ) $ Just $ StmtAlloc stmt
     }
+    | StmtNew
+    { \lState gState -> do
+        stmt <- $1 lState gState
+        return $ (lState, ) $ Just $ StmtNew stmt
+    }
     | StmtFree          
     { \lState gState -> do
         stmt <- $1 lState gState
@@ -436,6 +441,15 @@ StmtAlloc:
     { \lState gState -> do
         lValue <- $1 lState gState
         mkStmtAlloc (spanWVal lValue) (getSpanBwn lValue $5) 
+    }
+
+StmtNew :: { LState -> GState -> Either Error StmtNew }
+StmtNew:
+      LValue '=' new '(' Type1 ')' ';'
+    { \lState gState -> do
+        lValue <- $1 lState gState
+        type1 <- $5 gState
+        mkStmtNew (spanWVal lValue) (spanWVal type1) (getSpanBwn lValue $6) 
     }
 
 StmtFree :: { LState -> GState -> Either Error StmtFree }

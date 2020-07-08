@@ -41,6 +41,7 @@ data Stmt
   | StmtAlloc StmtAlloc
   | StmtFree StmtFree
   | StmtPoke StmtPoke
+  | StmtNew StmtNew
   deriving (Show, Eq)
 
 data StmtAssign =
@@ -97,6 +98,10 @@ data StmtFree =
 
 data StmtPoke =
   MkStmtPoke RValue RValue
+  deriving (Show, Eq)
+
+data StmtNew = 
+  MkStmtNew LValue Type1
   deriving (Show, Eq)
 
 data LValue
@@ -364,6 +369,24 @@ mkStmtAlloc lValue span = do
     $ Left --
     $ errExpectedUserType type1 span declSpan
   return $ MkStmtAlloc lValue
+
+mkStmtNew :: LValue -> Type1 -> Span -> Either Error StmtNew
+mkStmtNew lValue targetType span = do
+  let (Type2 dims type1) = lvType lValue
+  let declSpan           = lvDeclSpan lValue
+  unless (null dims)
+    $ Left --
+    $ errArrayNotAllowed span declSpan
+  targetTypeInhChain <- case targetType of
+                          TypeUser inhChain -> return inhChain
+                          _ -> Left $ Error.customError ("Expected class. Got: " ++ (show type1)) span
+  unless 
+      (case type1 of
+        TypeUser inhChain -> (head targetTypeInhChain) `elem` inhChain
+        _          -> False
+      )
+    $ Left $ Error.customError ("Type mismatch. Expected: " ++ (show type1) ++ "Got: " ++ (show targetType)) span
+  return $ MkStmtNew lValue targetType
 
 mkStmtFree :: LValue -> Span -> Either Error StmtFree
 mkStmtFree lValue span = do
