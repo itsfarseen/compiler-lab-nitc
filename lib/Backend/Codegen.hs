@@ -365,15 +365,11 @@ execVTableSetup = do
 execVTableSetup1 reg (_, vtes) = 
   flip mapM_ vtes $ \vte -> do
     let label = vteFuncLabel vte
-    addr <- gets (fromJustNote "ASD" . HM.lookup label . labels)
     t <- getFreeReg
-    appendCode [XSM_MOV_Int t addr]
+    appendCode [XSM_UTJ $ XSM_UTJ_MOV t label]
     appendCode [XSM_MOV_IndDst reg t]
     appendCode [XSM_ADD_I reg 1]
     releaseReg t
-
-
-  
 
 execFuncDef :: Func -> Codegen ()
 execFuncDef func = do

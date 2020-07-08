@@ -46,6 +46,7 @@ data UntranslatedJump
   | XSM_UTJ_JNZ Reg Label
   | XSM_UTJ_JMP Label
   | XSM_UTJ_CALL Label
+  | XSM_UTJ_MOV Reg Label
   deriving (Show)
 
 utjGetLabel :: UntranslatedJump -> String
@@ -54,6 +55,7 @@ utjGetLabel jmp = case jmp of
   XSM_UTJ_JNZ _ label -> label
   XSM_UTJ_JMP  label  -> label
   XSM_UTJ_CALL label  -> label
+  XSM_UTJ_MOV _ label  -> label
 
 utjTranslate :: UntranslatedJump -> Int -> XSMInstr
 utjTranslate jmp loc = case jmp of
@@ -61,6 +63,7 @@ utjTranslate jmp loc = case jmp of
   XSM_UTJ_JNZ r _ -> XSM_JNZ r loc
   XSM_UTJ_JMP  _  -> XSM_JMP loc
   XSM_UTJ_CALL _  -> XSM_CALL loc
+  XSM_UTJ_MOV r _  -> XSM_MOV_Int r loc
 
 toString :: XSMInstr -> String
 toString instr = case instr of
@@ -101,3 +104,4 @@ toString instr = case instr of
   XSM_UTJ (XSM_UTJ_JMP  label ) -> "JMP " ++ label
   XSM_UTJ (XSM_UTJ_JNZ r label) -> "JNZ " ++ show r ++ ", " ++ label
   XSM_UTJ (XSM_UTJ_JZ  r label) -> "JZ " ++ show r ++ ", " ++ label
+  XSM_UTJ (XSM_UTJ_MOV r label) -> "MOV " ++ show r ++ ", @" ++ label
