@@ -239,6 +239,7 @@ data UserType
              , utFields   :: [Symbol]
              , utFuncs    :: [Func]
              , utDeclSpan :: Span
+             , utFieldsVisibility :: SymbolVisibility
              }
   deriving (Eq, Show)
 
@@ -450,6 +451,8 @@ mkLValueField lValue (SpanW fieldName fieldNameSpan) indices userTypes =
   do
     utName <- getUserTypeName $ lvType lValue
     let userType = fromJust $ userTypeLookup utName userTypes
+    unless (utFieldsVisibility userType == SVPublic)
+      (Left $ Error.customError ("Fields are private for: " ++ utName) fieldNameSpan)
     sym <- symLookup fieldName (utFields userType) & \case
       -- TODO Better error
       Nothing  -> Left $ errIdentifierNotDeclared fieldName fieldNameSpan
