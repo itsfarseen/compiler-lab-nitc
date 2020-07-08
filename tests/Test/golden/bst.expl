@@ -18,7 +18,6 @@ bst insert(bst h, int key)
 {
 
   begin
-    any null; null = 0;
     if (h == null) then
         h = alloc();
         h.a = key;
@@ -41,7 +40,6 @@ bst insert(bst h, int key)
 int inOrder(bst h){
      
   begin
-    any null; null = 0;
     
   if(h!=null) then
      
@@ -56,7 +54,6 @@ int inOrder(bst h){
 int preOrder(bst h){
      
   begin
-    any null; null = 0;
     
   if(h!=null) then
     write(h.a);
@@ -71,7 +68,6 @@ int preOrder(bst h){
 int postOrder(bst h){
      
   begin
-    any null; null = 0;
     
   if(h!=null) then
     
@@ -93,7 +89,6 @@ int main()
   enddecl
 
   begin
-    any null; null = 0;
     initialize();
     Root = null;
 

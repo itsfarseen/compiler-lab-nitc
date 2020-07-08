@@ -22,6 +22,7 @@ import Data.Function
 
 
 import Debug.Trace
+dbgs :: Show a => String -> a -> a
 dbgs s v = trace (s ++ ": " ++ show v) v
 
 type Codegen = State CodegenState
@@ -362,6 +363,7 @@ execVTableSetup = do
   mapM_ (execVTableSetup1 r) vTables
   releaseReg r
 
+execVTableSetup1 :: Reg -> (a, [VTableEntry]) -> Codegen ()
 execVTableSetup1 reg (_, vtes) = 
   flip mapM_ vtes $ \vte -> do
     let label = vteFuncLabel vte
@@ -877,7 +879,10 @@ getRValueInReg rValue = case rValue of
     r1 <- getRValueInReg rValue
     appendCode [XSM_MOV_IndSrc r1 r1]
     return r1
-
+  G.RNull -> do
+    r1 <- getFreeReg
+    appendCode [XSM_MOV_Int r1 0]
+    return r1
 
 getFuncLabel :: String -> Codegen String
 getFuncLabel name = gets

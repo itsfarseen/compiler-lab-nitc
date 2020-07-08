@@ -89,6 +89,8 @@ import Control.Monad ((>=>), unless)
     poke       { TokenPoke       _ }
     class      { TokenClass      _ }
     extends    { TokenExtends    _ }
+    null       { TokenNull       _ }
+    new        { TokenNew        _ }
 
 %nonassoc '='
 %left '&&' '||'
@@ -523,6 +525,8 @@ RValue
         mkExpPeek rValue
         <&> flip SpanW (getSpanBwn $1 $4) 
     }
+    | null
+    { \_ _ -> return (SpanW RNull (getSpan $1))}
 
 RValues :: { LState -> GState -> Either Error [SpanW RValue] }
 RValues

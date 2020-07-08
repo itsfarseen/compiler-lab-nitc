@@ -152,6 +152,7 @@ data RValue
   | RMethodCall LValue String [RValue] Type1
   | RSyscall Int Int RValue RValue RValue
   | RPeek RValue
+  | RNull
   deriving (Show, Eq)
 
 data Exp
@@ -772,6 +773,7 @@ rValueType RSyscall{}                = (Type2 [] TypeAny)
 rValueType RPeek{}                   = (Type2 [] TypeAny)
 rValueType (RFuncCall _ _ type1    ) = Type2 [] type1
 rValueType (RMethodCall _ _ _ type1) = Type2 [] type1
+rValueType (RNull) = Type2 [] TypeAny
 
 expType :: Exp -> Type2
 expType exp = case exp of

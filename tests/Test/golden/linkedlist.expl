@@ -19,9 +19,6 @@ int main()
 
   begin
     initialize();
-    any null;
-    null = 0;
-    
     head=null;
     read(length); 
 
