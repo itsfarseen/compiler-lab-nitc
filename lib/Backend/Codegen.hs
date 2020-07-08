@@ -38,6 +38,7 @@ data CodegenState =
     , funcs :: [Func]
     , lSymbols :: Maybe [Symbol]
     , userTypes :: [UserType]
+    , userTypeVTables :: [(String, [VTableEntry])]
     }
 
 data Symbol =
@@ -64,6 +65,12 @@ data UserType =
     , utFuncs :: [Func]
     , utParentName :: Maybe String
     , utSize :: Int
+    }
+
+data VTableEntry =
+  VTableEntry
+    { vteFuncName :: String
+    , vteFuncLabel :: String
     }
 
 --
@@ -123,12 +130,15 @@ initCodegenState
 initCodegenState symbols funcs userTypes = codegenStateDefault
   { gSymbols
   , gSymbolsSize
-  , funcs        = funcs'
-  , userTypes    = userTypes'
+  , funcs           = funcs'
+  , userTypes       = userTypes'
+  , userTypeVTables = map
+    (\ut -> (utName ut, buildVTable ut userTypes'))
+    userTypes'
   }
  where
   (gSymbols, gSymbolsSize) = buildSymbolTable symbols 0
-  funcs'                   = buildFuncsTable funcs 0
+  funcs'                   = buildFuncsTable funcs ""
   userTypes'               = map convertUserType userTypes
 
 codegenStateDefault :: CodegenState
@@ -145,6 +155,7 @@ codegenStateDefault = CodegenState
   , lSymbols           = Nothing
   , funcs              = []
   , userTypes          = []
+  , userTypeVTables    = []
   }
 
 buildSymbolTable :: [G.Symbol] -> Int -> ([Symbol], Int)
@@ -164,10 +175,10 @@ buildSymbolTable symbols locBase =
       )
   dataTypeSize (G.Type2 dims _) = product dims
 
-buildFuncsTable :: [G.FuncDef] -> Int -> [Func]
-buildFuncsTable funcs i = case funcs of
+buildFuncsTable :: [G.FuncDef] -> String -> [Func]
+buildFuncsTable funcs utName = case funcs of
   []           -> []
-  (f : funcs') -> toFunc f : buildFuncsTable funcs' (i + 1)
+  (f : funcs') -> toFunc f : buildFuncsTable funcs' utName
  where
   toFunc f = case f of
     G.FuncDef { G.fDefName, G.fDefRetType, G.fDefBody, G.fDefArgsLen, G.fDefSyms }
@@ -182,7 +193,7 @@ buildFuncsTable funcs i = case funcs of
            , funcBody          = fDefBody
            , funcSymbols       = args' ++ localVars'
            , funcLocalVarsSize = locNext - 1
-           , funcLabel         = fDefName
+           , funcLabel         = getMethodLabel utName fDefName
            }
 
 buildFuncArgsTable :: [G.Symbol] -> Int -> [Symbol]
@@ -205,10 +216,49 @@ buildFuncArgsTable symbols locBase =
     in Symbol { symName, symType, symRelLoc = curLoc }
 
 
+
+getMethodLabel :: String -> String -> String
+getMethodLabel utName funcName = utName ++ "::" ++ funcName
+
 convertUserType :: G.UserType -> UserType
-convertUserType G.UserType { G.utName, G.utFields } =
-  let (utFields', utSize) = buildSymbolTable utFields 1
-  in UserType { utName, utFields = utFields', utSize }
+convertUserType G.UserType { G.utName, G.utFields, G.utFuncs, G.utParentName }
+  = let (utFields', utSize) = buildSymbolTable utFields 1
+    in
+      UserType
+        { utName
+        , utFields     = utFields'
+        , utFuncs      = buildFuncsTable (map toFuncDef utFuncs) utName
+        , utParentName
+        , utSize
+        }
+ where
+  toFuncDef (G.FuncDefined funcDef) = funcDef
+  toFuncDef (_) = error "Function declared, but not defined"
+
+buildVTable :: UserType -> [UserType] -> [VTableEntry]
+buildVTable userType userTypes =
+  let
+    baseTable =
+      case ((flip utLookup userTypes) <$> utParentName userType) of
+        Just parentType -> (buildVTable parentType userTypes)
+        Nothing         -> []
+  in toVTable baseTable (utFuncs userType)
+ where
+  utLookup name userTypes = findJustNote
+    ("Codegen: Find UserType by name: " ++ name)
+    (\t -> utName t == name)
+    userTypes
+  toVTable baseTable [] = baseTable
+  toVTable baseTable (func : fs) =
+    let
+      vte = VTableEntry
+        { vteFuncName  = funcName func
+        , vteFuncLabel = funcLabel func
+        }
+      baseTable' = insertList vteFuncName vte baseTable
+    in toVTable baseTable' fs
+
+
 --
 
 codeStartAddrXEXE :: Int
@@ -728,7 +778,11 @@ getRValueInReg rValue = case rValue of
     mapM_ (\_ -> appendCode [XSM_POP t]) args
     releaseReg t
     return (retReg, False)
-  G.RMethodCall _ fname args _ -> withSaveRegs $ \retReg -> do
+  G.RMethodCall self fname args _ -> withSaveRegs $ \retReg -> do
+    selfLoc    <- getRValueInReg (G.RLValue self)
+    vTableBase <- getFreeReg
+    appendCode [XSM_MOV_IndSrc vTableBase selfLoc]
+
     label <- getFuncLabel fname
     mapM_
       (\arg -> do
@@ -904,3 +958,9 @@ popLoopContinueLabel :: Codegen ()
 popLoopContinueLabel = do
   compiler <- get
   put compiler { loopContinueLabels = init (loopContinueLabels compiler) }
+
+insertList :: Eq a => (t -> a) -> t -> [t] -> [t]
+insertList key a list = case list of
+  [] -> [a]
+  (a' : as') ->
+    if key a == key a' then a : as' else a' : insertList key a as'
