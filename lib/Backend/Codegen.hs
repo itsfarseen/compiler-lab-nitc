@@ -37,6 +37,7 @@ data CodegenState =
     , loopContinueLabels :: [String]
     , gSymbols :: [Symbol]
     , gSymbolsSize :: Int
+    , vTableSize :: Int
     , funcs :: [Func]
     , lSymbols :: Maybe [Symbol]
     , userTypes :: [UserType]
@@ -134,14 +135,17 @@ initCodegenState symbols funcs userTypes = codegenStateDefault
   , gSymbolsSize
   , funcs           = funcs'
   , userTypes       = userTypes'
-  , userTypeVTables = map
-    (\ut -> (utName ut, buildVTable ut userTypes'))
-    userTypes'
+  , userTypeVTables
+  , vTableSize
   }
  where
   (gSymbols, gSymbolsSize) = buildSymbolTable symbols 0
   funcs'                   = buildFuncsTable funcs ""
   userTypes'               = map convertUserType userTypes
+  userTypeVTables =
+    map (\ut -> (utName ut, buildVTable ut userTypes')) userTypes'
+  vTableSize = sum (map length userTypeVTables)
+
 
 codegenStateDefault :: CodegenState
 codegenStateDefault = CodegenState
@@ -158,6 +162,7 @@ codegenStateDefault = CodegenState
   , funcs              = []
   , userTypes          = []
   , userTypeVTables    = []
+  , vTableSize         = 0
   }
 
 buildSymbolTable :: [G.Symbol] -> Int -> ([Symbol], Int)
@@ -261,6 +266,7 @@ buildVTable userType userTypes =
     in toVTable baseTable' fs
 
 
+
 --
 
 codeStartAddrXEXE :: Int
@@ -320,9 +326,9 @@ prependLabels code i labels =
 
 execSetupGlobalSymtab :: Codegen ()
 execSetupGlobalSymtab = do
+  vTableSize <- gets vTableSize
   gSymbolsSize <- gets gSymbolsSize
-  appendCode [XSM_MOV_Int SP 4096, XSM_ADD_I SP gSymbolsSize]
-
+  appendCode [XSM_MOV_Int SP vTableSize, XSM_ADD_I SP gSymbolsSize]
 
 
 execCallMainFunc :: Codegen ()
@@ -340,6 +346,32 @@ execFuncDefs :: Codegen ()
 execFuncDefs = do
   funcs <- gets funcs
   mapM_ execFuncDef funcs
+
+execMethodDefs :: Codegen ()
+execMethodDefs = do
+  userTypes <- gets userTypes
+  mapM_ ((mapM_ execFuncDef) . utFuncs) userTypes
+
+execVTableSetup :: Codegen ()
+execVTableSetup = do
+  vTables <- gets userTypeVTables
+  r <- getFreeReg
+  appendCode [XSM_MOV_Int r 4096]
+  mapM_ (execVTableSetup1 r) vTables
+  releaseReg r
+
+execVTableSetup1 reg (_, vtes) = 
+  flip mapM_ vtes $ \vte -> do
+    let label = vteFuncLabel vte
+    addr <- gets (fromJustNote "ASD" . HM.lookup label . labels)
+    t <- getFreeReg
+    appendCode [XSM_MOV_Int t addr]
+    appendCode [XSM_MOV_IndDst reg t]
+    appendCode [XSM_ADD_I reg 1]
+    releaseReg t
+
+
+  
 
 execFuncDef :: Func -> Codegen ()
 execFuncDef func = do
@@ -604,7 +636,8 @@ getLValueLocInReg1 (G.LValueGlobal ident indices _ _) = do
     <$> getGlobalSymbol ident
   let type_@(G.Type2 dims _) = symType symbol
   baseReg <- getFreeReg
-  appendCode [XSM_MOV_Int baseReg (4096 + symRelLoc symbol)]
+  start <- gets vTableSize
+  appendCode [XSM_MOV_Int baseReg (4096 + start + symRelLoc symbol)]
   (reg, _) <- applyIndices baseReg dims indices ident
   return (reg, type_)
 getLValueLocInReg1 (G.LValueLocal ident indices _ _) = do
@@ -781,13 +814,21 @@ getRValueInReg rValue = case rValue of
     releaseReg t
     return (retReg, False)
   G.RMethodCall self fname args _ -> withSaveRegs $ \retReg -> do
-    let selfUtName = G.lvType self & (\case 
-                      (G.Type2 [] (G.TypeUser inhChain)) -> head inhChain
-                      _ -> error "UnexpectedRMC1")
+    let
+      selfUtName =
+        G.lvType self
+          & (\case
+              (G.Type2 [] (G.TypeUser inhChain)) -> head inhChain
+              _ -> error "UnexpectedRMC1"
+            )
     selfLoc    <- getRValueInReg (G.RLValue self)
     vTableBase <- getFreeReg
     appendCode [XSM_MOV_IndSrc vTableBase selfLoc]
-    vTable <- gets $ snd . (findJust (\(name, _) -> name == selfUtName)) . userTypeVTables
+    vTable <-
+      gets
+      $ snd
+      . (findJust (\(name, _) -> name == selfUtName))
+      . userTypeVTables
     let offset = findIndexJust (\vte -> vteFuncName vte == fname) vTable
     appendCode [XSM_ADD_I vTableBase offset]
     mapM_
