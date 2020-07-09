@@ -1,0 +1,26 @@
+Program
+    - TSlist
+        - DoVarDeclare ----> *GSyms
+        - DoTypeDefine ----> *Types
+        - DoFuncDeclare ---> *Funcs
+        - DoFuncDefine ----> *Funcs
+            - FSlist     <------------------
+  *LSyms <----  - DoVarDeclare              |
+                - Bodied Stmts              | -----> *LSyms, GSyms, Types, Loop
+                    - If            \       |
+                    - IfElse         |>------
+                    - While         /
+                - LValue, RValue        LSyms, GSyms, Types, Funcs
+                    - Assign        \
+                    - Read           |
+                    - Write          |
+                    - RValue         |
+   Cur Func <------ - Return         |>--------
+                    - Initialize     |         |
+                    - Alloc          |        \ /
+                    - Free           |   |-> LValue ----- LSyms, GSyms, Types
+                    - Poke          /    |-- RValue ----- LSyms, GSyms, Types, Funcs
+                - Loop Control --               
+                    - Break      |
+                    - Continue   |
+                                  ---- Loop
