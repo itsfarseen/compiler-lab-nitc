@@ -19,6 +19,9 @@ import Error (Error)
 import qualified Error
 import Span
 
+import Debug.Trace
+dbgs :: Show a => String -> a -> a
+dbgs s v = trace (s ++ ": " ++ show v) v
 
 -- AST
 data Program =
@@ -382,10 +385,10 @@ mkStmtNew lValue targetType span = do
                           _ -> Left $ Error.customError ("Expected class. Got: " ++ (show type1)) span
   unless 
       (case type1 of
-        TypeUser inhChain -> (head targetTypeInhChain) `elem` inhChain
+        TypeUser inhChain -> (head inhChain) `elem` targetTypeInhChain
         _          -> False
       )
-    $ Left $ Error.customError ("Type mismatch. Expected: " ++ (show type1) ++ "Got: " ++ (show targetType)) span
+    $ Left $ Error.customError ("Type mismatch2. Expected: " ++ (show type1) ++ "Got: " ++ (show targetType)) span
   return $ MkStmtNew lValue targetType
 
 mkStmtFree :: LValue -> Span -> Either Error StmtFree
@@ -883,7 +886,7 @@ typeCheck1 :: Type2 -> [Type1] -> Span -> Either Error ()
 typeCheck1 type2@(Type2 dims type1) allowedTypes span = do
   unless (dims == [] && (type1 == TypeAny || type1 `elem` allowedTypes))
     (Left $ Error.customError
-      (  "Type mismatch: Expected "
+      (  "Type mismatch1: Expected "
       ++ (show allowedTypes)
       ++ ". Got: "
       ++ (show type2)

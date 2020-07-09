@@ -1,0 +1,23 @@
+class A         
+{
+    int foo;
+    int setFoo(int f) {
+        write("SET");
+        write(f);
+        self.foo = f;
+    }
+
+    int printFoo() {
+        write(self.foo);
+    }
+}
+
+A a;
+
+int main() {
+    initialize();
+    a = new(A);
+    a.setFoo(123);
+    a.printFoo();
+    write("DONE");
+}

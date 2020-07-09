@@ -1,0 +1,29 @@
+class A         
+{
+  str f0() {   
+       write("IN A");
+       return "RET A";
+  }
+}
+
+class B extends A
+{
+  str f0() {   
+       write("IN B");
+       return "RET B";
+  }
+}
+
+A a;
+B b;
+A a1;
+
+int main() {
+    initialize();
+    a = new(A);
+    b = new(B);
+    a1 = new(B);
+    write(a.f0());
+    write(b.f0());
+    write(a1.f0());
+}

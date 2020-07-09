@@ -147,7 +147,7 @@ initCodegenState symbols funcs userTypes = codegenStateDefault
   userTypes'               = map convertUserType userTypes
   userTypeVTables =
     map (\ut -> (utName ut, buildVTable ut userTypes')) userTypes'
-  vTableSize = sum (map length userTypeVTables)
+  vTableSize = sum (map (length . snd) userTypeVTables)
 
 
 codegenStateDefault :: CodegenState
@@ -197,11 +197,16 @@ buildFuncsTable funcs utName = case funcs of
            (args, localVars)         = splitAt fDefArgsLen fDefSyms'
            args'                     = buildFuncArgsTable args (-4)
            (localVars', locNext)     = buildSymbolTable localVars 1
+           dummySelf                 = Symbol
+             { symName   = ""
+             , symType   = G.Type2 [] G.TypeAny
+             , symRelLoc = -3
+             }
          in Func
            { funcName          = fDefName
            , funcRetType       = fDefRetType
            , funcBody          = fDefBody
-           , funcSymbols       = args' ++ localVars'
+           , funcSymbols       = args' ++ [dummySelf] ++ localVars'
            , funcLocalVarsSize = locNext - 1
            , funcLabel         = getMethodLabel utName fDefName
            }
@@ -331,7 +336,8 @@ execSetupGlobalSymtab :: Codegen ()
 execSetupGlobalSymtab = do
   vTableSize   <- gets vTableSize
   gSymbolsSize <- gets gSymbolsSize
-  appendCode [XSM_MOV_Int SP (4096 + vTableSize), XSM_ADD_I SP gSymbolsSize]
+  appendCode
+    [XSM_MOV_Int SP (4096 + (dbgs "vTableSize: " vTableSize)), XSM_ADD_I SP gSymbolsSize]
 
 
 execCallMainFunc :: Codegen ()
@@ -625,7 +631,7 @@ execStmtNew stmt = withSaveRegs $ \retReg -> do
   appendCode [XSM_MOV_IndDst reg retReg]
 
   -- Load VTable
-  loc <- dbgs "VTableLoc" <$> findVTableLoc 4096 targetTypeName <$> gets userTypeVTables
+  loc <- findVTableLoc 4096 targetTypeName <$> gets userTypeVTables
   appendCode [XSM_MOV_Int reg loc]
   appendCode [XSM_MOV_IndDst retReg reg]
 
@@ -693,7 +699,7 @@ getLValueLocInReg1 (G.LValueLocal ident indices _ _) = do
   appendCode [XSM_MOV_R baseReg BP]
   appendCode [XSM_ADD_I baseReg (symRelLoc symbol)]
   case symType symbol of
-    (G.Type2 _ (G.TypeUser _)) -> if (symRelLoc symbol) < 0
+    (G.Type2 _ (G.TypeUser _)) -> if (symRelLoc symbol) < (-3) -- (-3 is self)
       then appendCode [XSM_MOV_IndSrc baseReg baseReg]
       else return ()
     _ -> return ()
@@ -709,7 +715,7 @@ getLValueLocInReg1 (G.LValueField ident indices _ _ lValue parentUTName) =
     (reg, _) <- applyIndices baseReg dims indices ident
     return (reg, type_)
 getLValueLocInReg1 (G.LValueSelf type_) = do
-  symbol <- fromJustNote "getLValueLocInReg1 LSymbol" <$> getLocalSymbol ""
+  symbol  <- fromJustNote "getLValueLocInReg1 Self" <$> getLocalSymbol ""
   baseReg <- getFreeReg
   appendCode [XSM_MOV_R baseReg BP]
   appendCode [XSM_ADD_I baseReg (symRelLoc symbol)]
@@ -748,7 +754,9 @@ getUserTypeName type_ = case type_ of
 
 
 getLocalSymbol :: String -> Codegen (Maybe Symbol)
-getLocalSymbol name =
+getLocalSymbol name = do
+  -- !syms <- dbgs ("Syms("++name++") ") <$> gets lSymbols
+
   gets (\s -> find (\s -> (symName s) == name) =<< (lSymbols s))
 
 getGlobalSymbol :: String -> Codegen (Maybe Symbol)
@@ -874,7 +882,7 @@ getRValueInReg rValue = case rValue of
       $ snd
       . (findJust (\(name, _) -> name == selfUtName))
       . userTypeVTables
-    let offset = dbgs "Method offset " (findIndexJust (\vte -> vteFuncName vte == fname) vTable)
+    let offset = (findIndexJust (\vte -> vteFuncName vte == fname) vTable)
     appendCode [XSM_ADD_I vTableBase offset]
     mapM_
       (\arg -> do

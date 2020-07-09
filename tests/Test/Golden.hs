@@ -15,6 +15,13 @@ import Control.Monad.Except
 import Error (Error, panicError)
 import Data.ByteString.Lazy.UTF8 (fromString)
 import Test.LibraryUtils (loadLibrary)
+import Data.List (sortOn)
+
+import Debug.Trace
+-- dbg v = trace (toString v) v
+dbgs :: Show a => [Char] -> a -> a
+dbgs s v = trace (s ++ show v) v
+-- dbgst s v = trace (s ++ v) v
 
 main :: IO TestTree
 main = do
@@ -52,6 +59,9 @@ runGoldenTest explFile stdinFile = do
   let code      = Codegen.compileXEXE program
   let simulator = Simulator.run (Simulator.initWithStdin stdin code library)
   let stdout    = unlines $ Simulator.getStdout simulator
+  putStrLn $ "Memory " ++ (show (takeFileName explFile))
+  let memdump = sortOn fst (Simulator.getMemoryDump simulator)
+  mapM_ (\(addr, val) -> putStrLn $ (show addr) ++ ": " ++ val) memdump
   return stdout
 
 

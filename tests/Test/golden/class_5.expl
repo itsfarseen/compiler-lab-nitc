@@ -1,0 +1,45 @@
+class A         
+{
+  int m1() {
+    write("A M1");
+  }
+
+  int m2() {
+    write("A M2");
+  }
+
+  int m3() {
+    write("A M3");
+  }
+}
+
+class B extends A
+{
+  int m1() {
+    write("B M1");
+  }
+
+  int m3() {
+    write("B M3");
+  }
+}
+
+A a;
+B b;
+A a1;
+
+int main() {
+    initialize();
+    a = new(A);
+    b = new(B);
+    a1 = new(B);
+    a.m1();
+    a.m2();
+    a.m3();
+    b.m1();
+    b.m2();
+    b.m3();
+    a1.m1();
+    a1.m2();
+    a1.m3();
+}

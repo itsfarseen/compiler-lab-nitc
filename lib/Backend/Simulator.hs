@@ -13,9 +13,9 @@ import Flow
 import Text.Read (readMaybe)
 import Safe
 
-import Debug.Trace
+-- import Debug.Trace
 -- dbg v = trace (toString v) v
-dbgs s v = trace (s ++ show v) v
+-- dbgs s v = trace (s ++ show v) v
 -- dbgst s v = trace (s ++ v) v
 
 data Machine =
@@ -208,7 +208,7 @@ execute !instr !machine = case instr of
     XSM_CALLInd reg ->
       let
         spVal = read @Int (getRegVal SP machine)
-        loc   = dbgs ("CALL IND") (read @Int (getRegVal reg machine))
+        loc   = read @Int (getRegVal reg machine)
       in machine { ip = loc - 2 } |> setRegVal SP (spVal + 1) |> setMemory
         (spVal + 1)
         (ip machine + 2)

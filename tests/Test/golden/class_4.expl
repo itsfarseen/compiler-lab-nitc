@@ -1,0 +1,20 @@
+class A         
+{
+    int m1() {
+        write("M1");
+    }
+
+    int m2() {
+        write("M2");
+    }
+}
+
+A a;
+
+int main() {
+    initialize();
+    a = new(A);
+    a.m1();
+    a.m2();
+    write("DONE");
+}

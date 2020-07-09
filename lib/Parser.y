@@ -91,6 +91,7 @@ import Control.Monad ((>=>), unless)
     extends    { TokenExtends    _ }
     null       { TokenNull       _ }
     new        { TokenNew        _ }
+    self       { TokenSelf       _ }
 
 %nonassoc '='
 %left '&&' '||'
@@ -488,6 +489,16 @@ LValue
         mkLValueField (spanWVal lValue) ident indices userTypes
             <&> flip SpanW (getSpanBwn lValue (last indices)) 
     }
+    | self
+    { \lState gState -> do
+        let curUtName = utName `fmap` lsCurUserType lState
+        curUtName <- case curUtName of
+            Nothing -> Left $ Error.customError "self not avaialable out side class" 
+                                                 (getSpan $1)
+            Just curUtName -> Right curUtName
+        type1 <- mkType1 (SpanW curUtName (getSpan $1)) (gsUserTypes gState)
+        return $ SpanW (LValueSelf $ Type2 [] type1) (getSpan $1)
+    }
 
 Indices :: { LState -> GState -> Either Error [SpanW RValue] }
 Indices
@@ -673,11 +684,11 @@ type_extends
 DoTypeDefine :: { [UserType] -> ([UserType] -> GState -> GState) 
                   -> GState -> Either Error GState }
 DoTypeDefine
-    : type_or_class ident '{' TySList '}' type_extends
+    : type_or_class ident type_extends '{' TySList '}'
     { \userTypes userTypesUpdate gState -> do
         let name = spanWVal $2
             nameSpan = getSpan $2
-        utParentType <- $6 gState
+        utParentType <- $3 gState
         case (userTypeLookup name userTypes) of
             Just userType ->
                 Left $ errTypeRedeclared name (utDeclSpan userType) nameSpan
@@ -699,7 +710,7 @@ DoTypeDefine
         let userTypeUpdate = \userType ->
                 let userTypes' = userTypeInsert userType userTypes
                 in userTypesUpdate userTypes'
-        (gState', _)  <- $4 gState userType userTypeUpdate
+        (gState', _)  <- $5 gState userType userTypeUpdate
         return gState'
     }
 
