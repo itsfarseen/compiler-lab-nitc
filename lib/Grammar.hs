@@ -45,6 +45,7 @@ data Stmt
   | StmtFree StmtFree
   | StmtPoke StmtPoke
   | StmtNew StmtNew
+  | StmtBreakpoint StmtBreakpoint
   deriving (Show, Eq)
 
 data StmtAssign =
@@ -105,6 +106,10 @@ data StmtPoke =
 
 data StmtNew = 
   MkStmtNew LValue Type1
+  deriving (Show, Eq)
+
+data StmtBreakpoint = 
+  MkStmtBreakpoint
   deriving (Show, Eq)
 
 data LValue

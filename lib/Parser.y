@@ -92,6 +92,7 @@ import Control.Monad ((>=>), unless)
     null       { TokenNull       _ }
     new        { TokenNew        _ }
     self       { TokenSelf       _ }
+    breakpoint { TokenBreakpoint _ }
 
 %nonassoc '='
 %left '&&' '||'
@@ -340,6 +341,10 @@ FStmt
         stmt <- $1 lState gState
         return $ (lState, ) $ Just $ StmtContinue stmt
     }
+    | StmtBreakpoint
+    { \lState gState -> do
+        return $ (lState, ) $ Just $ StmtBreakpoint $1
+    }
     | FStmt ';'         { $1 }
 
 then_
@@ -352,7 +357,7 @@ endif_
 
 else_
     : else {$1}
-    | '}' '{' {$1}
+    | '}' else '{' {$1}
 
 
 StmtIf :: { LState -> GState -> Either Error StmtIf }
@@ -424,6 +429,11 @@ StmtContinue:
         let loopStack = lsLoopStack lState
         mkStmtContinue (getSpan $1) loopStack
     }
+
+StmtBreakpoint :: { StmtBreakpoint }
+StmtBreakpoint
+    : breakpoint ';'      
+    { MkStmtBreakpoint }
 
 StmtRValue :: { LState -> GState -> Either Error StmtRValue }
 StmtRValue:

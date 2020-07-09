@@ -56,6 +56,7 @@ data Token
   | TokenNull Span
   | TokenNew Span
   | TokenSelf Span
+  | TokenBreakpoint Span
   -- Constants, Identifier
   | TokenNumber (SpanW Int)
   | TokenStrLit (SpanW String)
@@ -118,6 +119,7 @@ instance HasSpan Token where
     TokenNull           span           -> span
     TokenNew            span           -> span
     TokenSelf           span           -> span
+    TokenBreakpoint     span           -> span
     -- Constants, Identifier
     TokenNumber         (SpanW _ span) -> span
     TokenStrLit         (SpanW _ span) -> span

@@ -3,18 +3,21 @@ type Foo {
     Foo foo;
 }
 
-int setFoo(Foo a) {
-    a = alloc();
+Foo setFoo(Foo a) {
+    if(a == null) {
+        a = alloc();
+    }
     a.a = 1234;
     a.foo = alloc();
     a.foo.a = 9988;
-    return 0;
+    return a;
 }
 
 int main() {
    initialize();
    Foo foo;
-   setFoo(foo);
+   foo = null;
+   foo = setFoo(foo);
    write(foo.a);
    write(foo.foo.a);
    return 0;

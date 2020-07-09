@@ -36,6 +36,7 @@ data XSMInstr
   | XSM_CALLInd Reg
   | XSM_RET
   | XSM_NOP
+  | XSM_BRKP
   | XSM_UTJ UntranslatedJump
   deriving (Show)
 
@@ -100,6 +101,7 @@ toString instr = case instr of
   XSM_RET                       -> "RET"
   XSM_INT i                     -> "INT " ++ show i
   XSM_NOP                       -> "NOP"
+  XSM_BRKP                      -> "BRKP"
   XSM_UTJ (XSM_UTJ_CALL label ) -> "CALL " ++ label
   XSM_UTJ (XSM_UTJ_JMP  label ) -> "JMP " ++ label
   XSM_UTJ (XSM_UTJ_JNZ r label) -> "JNZ " ++ show r ++ ", " ++ label

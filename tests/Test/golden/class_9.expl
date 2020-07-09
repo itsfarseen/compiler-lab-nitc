@@ -11,14 +11,11 @@ class Foo {
         self.b = b;
     }
 
-    int set(Struct s) {
+    Struct set(Struct s) {
         s = alloc();
         s.a = self.a;
         s.b = self.b;
-    }
-
-    int unify(Struct s1, Struct s2) {
-        s1 = s2;
+        return s;
     }
 
 }
@@ -30,17 +27,7 @@ int main() {
     initialize();
     f1 = new(Foo);
     f1.init(10, 20);
-    f1.set(s1);
-    write(s1.a);
-    write(s1.b);
-
-    f1.unify(s2, s1);
-    s1.a = 30;
-    s1.b = 40;
-    write(s2.a);
-    write(s2.b);
-    s2.a = 100;
-    s2.b = 200;
+    s1 = f1.set(s1);
     write(s1.a);
     write(s1.b);
 }

@@ -1,82 +1,102 @@
-type BST{
+/* vim: set ft=cpp: */
+type bst{
     int a;
-    BST left;
-    BST right;
+    bst left;
+    bst right;
 }
 
-class BSTclass{
-    BST root;
+class bstclass{
+    bst root;
 
-    int init(){
-        self.root=null;
+    int init() {
+        self.root = null;
         return 1;
     }
 
-    BST getRoot(){
+    bst getroot() {
         return self.root;
     }
 
-    int setRoot(BST n1){
-        self.root=n1;
+    int setroot(bst n1) {
+        self.root = n1;
         return 1;
     }
 
-    BST makeNode(int key){
-        BST temp;
-        temp=alloc();
-        temp.a=key;
-        temp.left=null;
-        temp.right=null;
+    bst getnode(int key) {
+        bst temp;
+        temp = alloc();
+        temp.a = key;
+        temp.left = null;
+        temp.right = null;
         return temp;
     }
 
-    BST insert(BST h, int key){
-        if (h == null) then
-            h = self.makeNode(key);
-        else
-            if (key < h.a) then
+    bst insert(bst h, int key) {
+        if (h == null) {
+            h = self.getnode(key);
+        } else {
+            if (key < h.a) {
                 h.left = self.insert(h.left, key);
-            else
-                if (key > h.a) then
+            } else {
+                if (key > h.a) {
                     h.right = self.insert(h.right, key);
-                endif
-            endif
-        endif
+                }
+            }
+        }
         return h;
-
     }
 
-    int inOrder_fun(BST h){
+    int inOrder_fun(bst h) {
         int in;
-        if(h != null) then
-            in=self.inOrder_fun(h.left);
+        if (h != null) {
+            in = self.inOrder_fun(h.left);
             write(h.a);
-            in=self.inOrder_fun(h.right);
-        endif
+            in = self.inOrder_fun(h.right);
+        }
         return 1;
     }
 
+    int preOrder_fun(bst h) {
+        int in;
+        if (h != null) {
+            write(h.a);
+            in = self.preOrder_fun(h.left);
+            in = self.preOrder_fun(h.right);
+        }
+        return 1;
+    }
+
+    int postOrder_fun(bst h) {
+        int in;
+        if (h != null) {
+            in = self.postOrder_fun(h.left);
+            in = self.postOrder_fun(h.right);
+            write(h.a);
+        }
+        return 1;
+    }
 }
 
-BSTclass obj;
+bstclass obj;
 
-int main(){
-    initialize();
+int main() {
 
-    BST root;
+    bst Root;
     int x,in,val;
 
-    obj = new(BSTclass);
+    initialize();
+
+    obj = new(bstclass);
     obj.init();
     read(val);
-    root = null;
-    while(val!=0) do
-        obj.insert(root,val);
+    Root = obj.getroot();
+    while (val != 0) do
+        Root = obj.insert(Root,val);
         read(val);
     endwhile;
-    obj.setRoot(root);
-    BST r;
-    r = obj.getRoot();
-    obj.inOrder_fun(r);
+    obj.setroot(Root);
+    obj.inOrder_fun(obj.getroot());
+    obj.preOrder_fun(obj.getroot());
+    obj.postOrder_fun(obj.getroot());
     return 0;
 }

@@ -1,0 +1,140 @@
+:		MOV R0, 4096
+:		MOV R1, @BSTClass::init
+:		MOV [R0], R1
+:		ADD R0, 1
+:		MOV R1, @BSTClass::getRoot
+:		MOV [R0], R1
+:		ADD R0, 1
+:		MOV R1, @BSTClass::inOrder
+:		MOV [R0], R1
+:		ADD R0, 1
+:		MOV SP, 4099
+:		ADD SP, 1
+:		CALL ::main
+:		INT 10
+BSTClass::init:		PUSH BP
+:		MOV BP, SP
+:		ADD SP, 0
+:		MOV R0, 0
+:		MOV R1, 4099
+:		MOV [R1], R0
+:		MOV SP, BP
+:		POP BP
+:		RET
+BSTClass::getRoot:		PUSH BP
+:		MOV BP, SP
+:		ADD SP, 0
+:		MOV R0, 0
+:		MOV R1, BP
+:		SUB R1, 2
+:		MOV [R1], R0
+:		MOV SP, BP
+:		POP BP
+:		RET
+:		MOV SP, BP
+:		POP BP
+:		RET
+BSTClass::inOrder:		PUSH BP
+:		MOV BP, SP
+:		ADD SP, 0
+:		MOV R0, 0
+:		MOV R1, BP
+:		SUB R1, 2
+:		MOV [R1], R0
+:		MOV SP, BP
+:		POP BP
+:		RET
+:		MOV SP, BP
+:		POP BP
+:		RET
+::main:		PUSH BP
+:		MOV BP, SP
+:		ADD SP, 2
+:		MOV R1, "Heapset"
+:		PUSH R1
+:		PUSH R0
+:		PUSH R0
+:		PUSH R0
+:		PUSH R0
+:		PUSH R0
+:		CALL 0
+:		POP R1
+:		POP R1
+:		POP R1
+:		POP R1
+:		POP R1
+:		POP R1
+:		MOV R1, BP
+:		ADD R1, 2
+:		PUSH R1
+:		MOV R2, "Alloc"
+:		PUSH R2
+:		MOV R2, 1
+:		PUSH R2
+:		PUSH R0
+:		PUSH R0
+:		PUSH R0
+:		PUSH R0
+:		CALL 0
+:		POP R0
+:		POP R2
+:		POP R2
+:		POP R2
+:		POP R2
+:		POP R2
+:		POP R1
+:		MOV [R1], R0
+:		MOV R1, 4096
+:		MOV [R0], R1
+:		MOV R1, BP
+:		ADD R1, 2
+:		MOV R1, [R1]
+:		MOV R2, [R1]
+:		ADD R2, 0
+:		PUSH R1
+:		PUSH R0
+:		MOV R2, [R2]
+:		CALL R2
+:		POP R0
+:		POP R1
+:		BRKP
+:		MOV R1, BP
+:		ADD R1, 2
+:		MOV R1, [R1]
+:		MOV R2, [R1]
+:		ADD R2, 2
+:		PUSH R2
+:		PUSH R1
+:		PUSH R0
+:		MOV R0, BP
+:		ADD R0, 2
+:		MOV R0, [R0]
+:		MOV R1, [R0]
+:		ADD R1, 1
+:		PUSH R0
+:		PUSH R0
+:		MOV R1, [R1]
+:		CALL R1
+:		POP R3
+:		POP R0
+:		POP R2
+:		POP R1
+:		POP R0
+:		PUSH R3
+:		PUSH R1
+:		PUSH R0
+:		MOV R2, [R2]
+:		CALL R2
+:		POP R0
+:		POP R1
+:		POP R1
+:		MOV R0, 0
+:		MOV R1, BP
+:		SUB R1, 2
+:		MOV [R1], R0
+:		MOV SP, BP
+:		POP BP
+:		RET
+:		MOV SP, BP
+:		POP BP
+:		RET

@@ -1,0 +1,33 @@
+type BST {
+    int a;
+}
+
+int x;
+
+class BSTClass {
+    int init() {
+        return 0;
+    }
+
+    BST getRoot() {
+        return null;
+    }
+
+    int inOrder(BST h) {
+        return 0;
+    }
+}
+
+
+int main() {
+    initialize();
+
+    BST Root;
+    BSTClass obj;
+
+    obj = new(BSTClass);
+    obj.init();
+    breakpoint;
+    obj.inOrder(obj.getRoot());
+    return 0;
+}

@@ -68,6 +68,7 @@ $sq_bracket_close = \]
 @null        = "null"
 @new         = "new"
 @self        = "self"
+@breakpoint  = "breakpoint"
 
 @number      = [0-9]+
 @strlit      = \"[^\"]*\"
@@ -134,6 +135,7 @@ tokens :-
     @null        {token TokenNull}
     @new         {token TokenNew}
     @self        {token TokenSelf}
+    @breakpoint  {token TokenBreakpoint}
 
     @number      {tokenInt   TokenNumber}
     @strlit      {tokenStr   TokenStrLit}

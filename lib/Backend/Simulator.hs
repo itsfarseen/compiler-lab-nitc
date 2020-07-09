@@ -12,10 +12,12 @@ import Data.Maybe
 import Flow
 import Text.Read (readMaybe)
 import Safe
+import Data.List (sortOn)
+-- import System.IO.Unsafe (unsafePerformIO)
 
-import Debug.Trace
-dbg v = trace (toString v) v
-dbgs s v = trace (s ++ show v) v
+-- import Debug.Trace
+-- dbg v = trace (toString v) v
+-- dbgs s v = trace (s ++ show v) v
 -- dbgst s v = trace (s ++ v) v
 
 data Machine =
@@ -109,10 +111,11 @@ setMemory !loc !val machine = if loc < 1024
   else machine { memory = HM.insert loc (toXSMStr val) (memory machine) }
 
 execute :: XSMInstr -> Machine -> (Machine, Bool)
-execute !instr !machine = case dbg instr of
+execute !instr !machine = case instr of
   XSM_INT 10 -> (machine, True)
   _          -> (, False) $ case instr of
     XSM_NOP -> machine
+    XSM_BRKP -> machine -- seq (unsafePerformIO $ printDumpState machine) machine
     XSM_MOV_R r1 r2 ->
       let r2Val = getRegVal r2 machine in setRegVal r1 r2Val machine
     XSM_MOV_Int r1 val -> setRegVal r1 val machine
@@ -208,7 +211,7 @@ execute !instr !machine = case dbg instr of
     XSM_CALLInd reg ->
       let
         spVal = read @Int (getRegVal SP machine)
-        loc   = (read @Int (dbgs "CALL R " $ getRegVal reg machine))
+        loc   = read @Int  (getRegVal reg machine)
       in machine { ip = loc - 2 } |> setRegVal SP (spVal + 1) |> setMemory
         (spVal + 1)
         (ip machine + 2)
@@ -267,3 +270,23 @@ syscall num machine =
       else machine { stdout = out : (stdout machine) }
       where [funcNum, fPtr, out, _, _] = args
     _ -> error $ "Syscall not implemented: " ++ (show num)
+
+
+
+printDumpState :: Machine -> IO ()
+printDumpState machine = do
+  putStrLn "Registers: "
+  printRegisterDump machine
+  putStrLn "Memory: "
+  printMemoryDump machine
+
+printRegisterDump :: Machine -> IO ()
+printRegisterDump machine = do
+  let regdump = sortOn fst (HM.toList $ registers machine)
+  mapM_ (\(reg, val) -> putStrLn $ (show $ toEnum @Reg reg) ++ ": " ++ val) regdump
+
+printMemoryDump :: Machine -> IO ()
+printMemoryDump machine = do
+  let memdump = sortOn fst (getMemoryDump machine)
+  mapM_ (\(addr, val) -> putStrLn $ (show addr) ++ ": " ++ val) memdump
+
