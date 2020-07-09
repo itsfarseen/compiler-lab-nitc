@@ -337,7 +337,7 @@ execSetupGlobalSymtab = do
   vTableSize   <- gets vTableSize
   gSymbolsSize <- gets gSymbolsSize
   appendCode
-    [XSM_MOV_Int SP (4096 + (dbgs "vTableSize: " vTableSize)), XSM_ADD_I SP gSymbolsSize]
+    [XSM_MOV_Int SP (4096 + vTableSize), XSM_ADD_I SP gSymbolsSize]
 
 
 execCallMainFunc :: Codegen ()

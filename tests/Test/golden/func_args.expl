@@ -1,17 +1,13 @@
 int foo(int a,int b)
 {
-  write("FOO");
   write(a);
   write(b);
-  write("BAR");
   return 0;
 }
 
 int main()
 {
-    write("BAZ");
     foo(123, 456);
-    write("DONE");
 }
 
 
