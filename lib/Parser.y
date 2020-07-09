@@ -342,10 +342,22 @@ FStmt
     }
     | FStmt ';'         { $1 }
 
+then_
+    : then {$1}
+    | '{' {$1}
+
+endif_
+    : endif {$1}
+    | '}' {$1}
+
+else_
+    : else {$1}
+    | '}' '{' {$1}
+
 
 StmtIf :: { LState -> GState -> Either Error StmtIf }
 StmtIf
-    : if '(' RValue ')' then FSlist endif             
+    : if '(' RValue ')' then_ FSlist endif_
     { \lState gState -> do
         cond <- $3 lState gState
         (_, thenSlist) <- $6 (lState{lsIsTopLevel = False}) gState
@@ -354,7 +366,7 @@ StmtIf
 
 StmtIfElse :: { LState -> GState -> Either Error StmtIfElse }
 StmtIfElse
-    : if '(' RValue ')' then FSlist else FSlist endif             
+    : if '(' RValue ')' then_ FSlist else_ FSlist endif_
     { \lState gState -> do
         cond <- $3 lState gState
         (_, thenSlist) <- $6 lState{lsIsTopLevel = False} gState
@@ -710,7 +722,7 @@ DoTypeDefine
         let userTypeUpdate = \userType ->
                 let userTypes' = userTypeInsert userType userTypes
                 in userTypesUpdate userTypes'
-        (gState', _)  <- $5 gState userType userTypeUpdate
+        (gState', _)  <- $5 gState' userType userTypeUpdate
         return gState'
     }
 

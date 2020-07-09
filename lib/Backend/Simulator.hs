@@ -13,9 +13,9 @@ import Flow
 import Text.Read (readMaybe)
 import Safe
 
--- import Debug.Trace
--- dbg v = trace (toString v) v
--- dbgs s v = trace (s ++ show v) v
+import Debug.Trace
+dbg v = trace (toString v) v
+dbgs s v = trace (s ++ show v) v
 -- dbgst s v = trace (s ++ v) v
 
 data Machine =
@@ -109,7 +109,7 @@ setMemory !loc !val machine = if loc < 1024
   else machine { memory = HM.insert loc (toXSMStr val) (memory machine) }
 
 execute :: XSMInstr -> Machine -> (Machine, Bool)
-execute !instr !machine = case instr of
+execute !instr !machine = case dbg instr of
   XSM_INT 10 -> (machine, True)
   _          -> (, False) $ case instr of
     XSM_NOP -> machine
@@ -208,7 +208,7 @@ execute !instr !machine = case instr of
     XSM_CALLInd reg ->
       let
         spVal = read @Int (getRegVal SP machine)
-        loc   = read @Int (getRegVal reg machine)
+        loc   = (read @Int (dbgs "CALL R " $ getRegVal reg machine))
       in machine { ip = loc - 2 } |> setRegVal SP (spVal + 1) |> setMemory
         (spVal + 1)
         (ip machine + 2)

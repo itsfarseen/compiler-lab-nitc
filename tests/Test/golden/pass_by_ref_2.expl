@@ -1,0 +1,23 @@
+type Struct {
+    int a;
+    int b;
+}
+
+
+Struct gs;
+
+int test(Struct s) {
+    gs = s;
+}
+
+
+int main() {
+    initialize();
+    Struct s1;
+    s1 = alloc();
+    s1.a = 10;
+    s1.b = 20;
+    test(s1);
+    write(gs.a);
+    write(gs.b);
+}

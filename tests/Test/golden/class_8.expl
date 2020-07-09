@@ -1,0 +1,26 @@
+class Rec {
+    Rec r;
+    int init(int n) {
+        self.r = null;
+        if(n > 0) then
+            self.r = new(Rec);
+            self.r.init(n-1);
+        endif
+    }
+
+    int print() {
+        if(self.r != null) then
+            write("FOO");
+            self.r.print();
+        endif
+    }
+}
+
+int main() {
+    initialize();
+    Rec r;
+    r = new(Rec);
+    r.init(5);
+    r.print();
+    write("DONE");
+}

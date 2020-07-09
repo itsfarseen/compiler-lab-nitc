@@ -1,0 +1,82 @@
+type BST{
+    int a;
+    BST left;
+    BST right;
+}
+
+class BSTclass{
+    BST root;
+
+    int init(){
+        self.root=null;
+        return 1;
+    }
+
+    BST getRoot(){
+        return self.root;
+    }
+
+    int setRoot(BST n1){
+        self.root=n1;
+        return 1;
+    }
+
+    BST makeNode(int key){
+        BST temp;
+        temp=alloc();
+        temp.a=key;
+        temp.left=null;
+        temp.right=null;
+        return temp;
+    }
+
+    BST insert(BST h, int key){
+        if (h == null) then
+            h = self.makeNode(key);
+        else
+            if (key < h.a) then
+                h.left = self.insert(h.left, key);
+            else
+                if (key > h.a) then
+                    h.right = self.insert(h.right, key);
+                endif
+            endif
+        endif
+        return h;
+
+    }
+
+    int inOrder_fun(BST h){
+        int in;
+        if(h != null) then
+            in=self.inOrder_fun(h.left);
+            write(h.a);
+            in=self.inOrder_fun(h.right);
+        endif
+        return 1;
+    }
+
+}
+
+BSTclass obj;
+
+int main(){
+    initialize();
+
+    BST root;
+    int x,in,val;
+
+    obj = new(BSTclass);
+    obj.init();
+    read(val);
+    root = null;
+    while(val!=0) do
+        obj.insert(root,val);
+        read(val);
+    endwhile;
+    obj.setRoot(root);
+    BST r;
+    r = obj.getRoot();
+    obj.inOrder_fun(r);
+    return 0;
+}
